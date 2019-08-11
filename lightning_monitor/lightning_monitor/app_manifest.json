@@ -1,0 +1,16 @@
+{
+  "SchemaVersion": 1,
+  "Name" : "lightning_monitor",
+  "ComponentId" : "b56ecde8-24d3-4cff-816e-ac580d42d73e",
+  "EntryPoint": "/bin/app",
+  "CmdArgs": [],
+  "Capabilities": {
+    // Partner Component IDs
+    "AllowedApplicationConnections": [ "ac067706-9bda-425a-a766-a91a2c4e32c0" ],
+    "AllowedConnections": [],
+    "Gpio": [ ],
+    "Uart": [],
+    "WifiConfig": false
+  },
+  "ApplicationType":"Default"
+}

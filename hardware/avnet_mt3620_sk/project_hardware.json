@@ -1,0 +1,81 @@
+{
+	"Metadata": {
+		"Type": "Azure Sphere Hardware Definition",
+		"Version": 1
+	},
+	"Description": {
+		"Name": "Project hardware abstraction for Avnet MT3620 SK",
+		"MainCoreHeaderFileTopContent": [
+			"/* Copyright (c) Microsoft Corporation. All rights reserved.",
+			"   Licensed under the MIT License. */",
+			"",
+			"// This file defines the mapping from the Avnet MT3620 Starter Kit (SK) to the",
+			"// 'project hardware' abstraction used by this project.",
+			"// Some peripherals are on-board on the Avnet MT3620 SK, while other peripherals must be attached externally if needed."
+		]
+	},
+	"Imports": [ { "Path": "avnet_mt3620_sk.json" } ],
+    "Peripherals": [
+        {
+            "Name": "PROJECT_BUTTON_1",
+            "Type": "Gpio",
+            "Mapping": "AVNET_MT3620_SK_USER_BUTTON_A",
+            "Comment": "MT3620 SK: User Button A."
+        },
+        {
+            "Name": "PROJECT_BUTTON_2",
+            "Type": "Gpio",
+            "Mapping": "AVNET_MT3620_SK_USER_BUTTON_B",
+            "Comment": "MT3620 SK: User Button B."
+        },
+        {
+            "Name": "PROJECT_LED",
+            "Type": "Gpio",
+            "Mapping": "AVNET_MT3620_SK_USER_LED_RED",
+            "Comment": "MT3620 SK: User LED."
+        },
+        {
+            "Name": "PROJECT_RGBLED_RED",
+            "Type": "Gpio",
+            "Mapping": "AVNET_MT3620_SK_USER_LED_RED",
+            "Comment": "MT3620 SK: User LED RED Channel."
+        },
+        {
+            "Name": "PROJECT_RGBLED_GREEN",
+            "Type": "Gpio",
+            "Mapping": "AVNET_MT3620_SK_USER_LED_GREEN",
+            "Comment": "MT3620 SK: User LED GREEN Channel."
+        },
+        {
+            "Name": "PROJECT_RGBLED_BLUE",
+            "Type": "Gpio",
+            "Mapping": "AVNET_MT3620_SK_USER_LED_BLUE",
+            "Comment": "MT3620 SK: User LED BLUE Channel."
+        },
+        {
+            "Name": "PROJECT_ISU2_I2C",
+            "Type": "I2cMaster",
+            "Mapping": "AVNET_MT3620_SK_ISU2_I2C",
+            "Comment": "MT3620 SK: SOCKET1, SOCKET2, GROVE & OLED I2C ISU."
+        },
+        {
+            "Name": "PROJECT_SOCKET12_INT",
+            "Type": "Gpio",
+            "Mapping": "AVNET_MT3620_SK_GPIO2",
+            "Comment": "MT3620 SK: SOCKET1 & SOCKET2 INT pin."
+        },
+        {
+            "Name": "PROJECT_SOCKET1_CS",
+            "Type": "Gpio",
+            "Mapping": "AVNET_MT3620_SK_GPIO34",
+            "Comment": "MT3620 SK: SOCKET1 CS pin."
+        },
+        {
+            "Name": "PROJECT_SOCKET1_RST",
+            "Type": "Gpio",
+            "Mapping": "AVNET_MT3620_SK_GPIO16",
+            "Comment": "MT3620 SK: SOCKET1 RST pin."
+        }
+
+    ]
+}

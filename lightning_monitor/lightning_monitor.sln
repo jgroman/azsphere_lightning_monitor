@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.757
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lightning_monitor", "lightning_monitor\lightning_monitor.vcxproj", "{2DB3CDEE-395A-441B-BB2A-DEE5FD966B27}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|ARM = Debug|ARM
+		Release|ARM = Release|ARM
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2DB3CDEE-395A-441B-BB2A-DEE5FD966B27}.Debug|ARM.ActiveCfg = Debug|ARM
+		{2DB3CDEE-395A-441B-BB2A-DEE5FD966B27}.Debug|ARM.Build.0 = Debug|ARM
+		{2DB3CDEE-395A-441B-BB2A-DEE5FD966B27}.Release|ARM.ActiveCfg = Release|ARM
+		{2DB3CDEE-395A-441B-BB2A-DEE5FD966B27}.Release|ARM.Build.0 = Release|ARM
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1051382D-97E1-42E9-A495-EADF8FBBC29A}
+	EndGlobalSection
+EndGlobal
