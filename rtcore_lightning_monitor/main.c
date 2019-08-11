@@ -1,9 +1,13 @@
-/* 
- * Original work Copyright (c) 2019 Microsoft Corporation. All rights reserved.
- * Modified work Copyright (c) 2019 Jaroslav Groman
- *
- * Licensed under the MIT License. 
- */
+/***************************************************************************//**
+* @file    main.c
+* @version 1.0.0
+*
+* Original work Copyright (c) 2019 Microsoft Corporation. All rights reserved.
+* Modified work Copyright (c) 2019 Jaroslav Groman
+*
+* Licensed under the MIT License.
+*
+*******************************************************************************/
 
 #include <ctype.h>
 #include <stddef.h>
@@ -15,17 +19,25 @@
 #include "mt3620-intercore.h"
 #include "mt3620-uart-poll.h"
 #include "mt3620-adc.h"
+#include "mt3620-timer.h"
+#include "mt3620-gpio.h"
 
 // Import project hardware abstraction
 #include "../hardware/avnet_mt3620_sk/inc/hw/project_hardware.h"
 
+/*******************************************************************************
+*   Macros and #define Constants
+*******************************************************************************/
+
 #define APP_NAME "RTCore Lightning Monitor"
 
-#define GPIO_USER_LED_RED       8
-#define GPIO_USER_LED_GREEN     9
-#define GPIO_USER_LED_BLUE      10
-#define GPIO_BUTTON_A   12
+// Select which Click Socket (1 or 2) the TA7642 radio is connected to
+// TA7642 PWM - Socket PWM (GPIO 0 / 1)
+// TA7642 OUT - Socket AN  (ADC0 ch 1 / 2)
+// TA7642 GND - Socket GND
+#define TA7642_SOCKET_NUMBER 1
 
+#define PWM_INTERVAL_MS 50
 
 // String CR + LF.
 #define STRING_CRLF  "\r\n"
@@ -58,11 +70,12 @@ print_bytes(const uint8_t *buf, int start, int end);
 static void 
 print_guid(const uint8_t *guid);
 
+static void
+HandleBlinkTimerIrq(void);
+
 /*******************************************************************************
 * Global variables
 *******************************************************************************/
-
-extern uint32_t StackTop; // &StackTop == end of TCM0
 
 /*
 ARM DDI0403E.d SB1.5.2-3
@@ -74,9 +87,10 @@ in linker.ld, using the dedicated section ".vector_table".
 
 // The exception vector table contains a stack pointer, 15 exception handlers, 
 // and an entry for each interrupt.
-#define INTERRUPT_COUNT 100 // from datasheet
-#define EXCEPTION_COUNT (16 + INTERRUPT_COUNT)
-#define INT_TO_EXC(i_) (16 + (i_))
+#define INTERRUPT_COUNT     100 // from datasheet
+#define EXCEPTION_COUNT     (16 + INTERRUPT_COUNT)
+#define INT_TO_EXC(i_)      (16 + (i_))
+extern uint32_t StackTop;   // &StackTop == end of TCM0
 static const uintptr_t ExceptionVectorTable[EXCEPTION_COUNT]
     __attribute__((section(".vector_table"))) __attribute__((used)) = {
         [0] = (uintptr_t)&StackTop,                  // Main Stack Pointer (MSP)
@@ -91,8 +105,13 @@ static const uintptr_t ExceptionVectorTable[EXCEPTION_COUNT]
         [14] = (uintptr_t)default_exception_handler, // PendSV
         [15] = (uintptr_t)default_exception_handler, // SysTick
 
-        [INT_TO_EXC(0)... INT_TO_EXC(INTERRUPT_COUNT - 1)] = 
+        [INT_TO_EXC(0)] = (uintptr_t)default_exception_handler,
+        [INT_TO_EXC(1)] = (uintptr_t)Gpt_HandleIrq1,
+        [INT_TO_EXC(2)... INT_TO_EXC(INTERRUPT_COUNT - 1)] = 
             (uintptr_t)default_exception_handler };
+
+
+static bool led1RedOn = false;
 
 /*******************************************************************************
 * Application entry point
@@ -113,8 +132,43 @@ rtcore_main(void)
 #   ifdef DEBUG_ENABLED
     // UART initialization and app header
     Uart_Init();
-    Uart_WriteStringPoll(APP_NAME " ("__DATE__ ", " __TIME__") READY" STRING_CRLF);
+    Uart_WriteStringPoll(APP_NAME " ("__DATE__ ", " __TIME__")" STRING_CRLF);
 #   endif // DEBUG_ENABLED
+
+    // Initialize timers
+    Gpt_Init();
+
+    // Block includes GPIO0 and GPIO1 - "official" PWM pins
+    static const GpioBlock pwm0 = {
+        .baseAddr = 0x38010000,
+        .type = GpioBlock_PWM,
+        .firstPin = 0,
+        .pinCount = 4 
+    };
+    Mt3620_Gpio_AddBlock(&pwm0);
+
+    // Block includes led1RedGpio, GPIO8.
+    static const GpioBlock pwm2 = {
+        .baseAddr = 0x38030000,
+        .type = GpioBlock_PWM,
+        .firstPin = 8,
+        .pinCount = 4 
+    };
+    Mt3620_Gpio_AddBlock(&pwm2);
+
+    Mt3620_Gpio_ConfigurePinForOutput(PROJECT_RGBLED_RED);
+
+    Mt3620_Gpio_Write(PROJECT_RGBLED_RED, led1RedOn);
+
+
+    // TA7642 PWM GPIO
+    Mt3620_Gpio_ConfigurePinForOutput(TA7642_SOCKET_NUMBER - 1);
+
+    Gpt_LaunchTimerMs(TimerGpt0, 500, HandleBlinkTimerIrq);
+
+    for (;;) {
+        __asm__("wfi");
+    }
 
 	// ADC Initialization
 	EnableAdc();
@@ -231,6 +285,15 @@ default_exception_handler(void)
     {
         // Empty Block
     }
+}
+
+static void 
+HandleBlinkTimerIrq(void)
+{
+    led1RedOn = !led1RedOn;
+    Mt3620_Gpio_Write(PROJECT_RGBLED_RED, led1RedOn);
+
+    Gpt_LaunchTimerMs(TimerGpt0, 500, HandleBlinkTimerIrq);
 }
 
 static void
