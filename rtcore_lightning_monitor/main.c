@@ -19,11 +19,17 @@
 #include "mt3620-intercore.h"
 #include "mt3620-uart-poll.h"
 #include "mt3620-adc.h"
-#include "mt3620-timer.h"
+#include "mt3620-timer-2.h"
 #include "mt3620-gpio.h"
 
 // Import project hardware abstraction
 #include "../hardware/avnet_mt3620_sk/inc/hw/project_hardware.h"
+
+/*******************************************************************************
+*   External variables
+*******************************************************************************/
+
+extern uint32_t StackTop;   // &StackTop == end of TCM0
 
 /*******************************************************************************
 *   Macros and #define Constants
@@ -37,7 +43,16 @@
 // TA7642 GND - Socket GND
 #define TA7642_SOCKET_NUMBER 1
 
-#define PWM_INTERVAL_MS 50
+#if TA7642_SOCKET_NUMBER == 1
+#define TA7642_GPIO_PWM     0
+#define TA7642_ADC_CH       1
+#else
+#define TA7642_GPIO_PWM     1
+#define TA7642_ADC_CH       2
+#endif // TA7642_SOCKET_NUMBER == 1
+
+// Maximum allowed value for PWM counter
+#define PWM_COUNTER_MAX   32
 
 // String CR + LF.
 #define STRING_CRLF  "\r\n"
@@ -49,29 +64,41 @@
 * Forward declarations of private functions
 *******************************************************************************/
 
-/** @brief Empty exception handler.
- *
+/** 
+ * @brief Empty exception handler.
  */
 static _Noreturn void
 default_exception_handler(void);
 
-/** @brief Main application.
- *
+/** 
+ * @brief Main application entry point.
  */
 static _Noreturn void
 rtcore_main(void);
 
-/** @brief Print bytes from buffer.
+/** 
+ * @brief Start GPT timer for PWM.
  *
+ * Handles starting GPT timer for PWM usage including special cases for 
+ * certain counter values.
+ */
+static void
+start_pwm_timer(uint32_t counter);
+
+/**
+ * @brief IRQ handler for PWM GPT timer.
+ */
+static void
+handle_irq_pwm_timer(void);
+
+/** 
+ * @brief Print bytes from buffer.
  */
 static void
 print_bytes(const uint8_t *buf, int start, int end);
 
 static void 
 print_guid(const uint8_t *guid);
-
-static void
-HandleBlinkTimerIrq(void);
 
 /*******************************************************************************
 * Global variables
@@ -90,7 +117,6 @@ in linker.ld, using the dedicated section ".vector_table".
 #define INTERRUPT_COUNT     100 // from datasheet
 #define EXCEPTION_COUNT     (16 + INTERRUPT_COUNT)
 #define INT_TO_EXC(i_)      (16 + (i_))
-extern uint32_t StackTop;   // &StackTop == end of TCM0
 static const uintptr_t ExceptionVectorTable[EXCEPTION_COUNT]
     __attribute__((section(".vector_table"))) __attribute__((used)) = {
         [0] = (uintptr_t)&StackTop,                  // Main Stack Pointer (MSP)
@@ -111,7 +137,8 @@ static const uintptr_t ExceptionVectorTable[EXCEPTION_COUNT]
             (uintptr_t)default_exception_handler };
 
 
-static bool led1RedOn = false;
+// PWM duty control variable. Allowed values: 0 - PWM_COUNTER_MAX
+static uint8_t pwm_control;
 
 /*******************************************************************************
 * Application entry point
@@ -135,10 +162,11 @@ rtcore_main(void)
     Uart_WriteStringPoll(APP_NAME " ("__DATE__ ", " __TIME__")" STRING_CRLF);
 #   endif // DEBUG_ENABLED
 
-    // Initialize timers
+    // Initialize GPT
     Gpt_Init();
 
-    // Block includes GPIO0 and GPIO1 - "official" PWM pins
+    // Initialize GPIO
+    // -- GPIO Block for GPIO0 and GPIO1 - Click Socket 1 & 2 PWM pins
     static const GpioBlock pwm0 = {
         .baseAddr = 0x38010000,
         .type = GpioBlock_PWM,
@@ -147,7 +175,10 @@ rtcore_main(void)
     };
     Mt3620_Gpio_AddBlock(&pwm0);
 
-    // Block includes led1RedGpio, GPIO8.
+    // -- Configure Click Socket PWM pin for TA7642 module PWM input
+    Mt3620_Gpio_ConfigurePinForOutput(TA7642_GPIO_PWM);
+
+    // -- Block includes led1RedGpio, GPIO8.
     static const GpioBlock pwm2 = {
         .baseAddr = 0x38030000,
         .type = GpioBlock_PWM,
@@ -157,28 +188,30 @@ rtcore_main(void)
     Mt3620_Gpio_AddBlock(&pwm2);
 
     Mt3620_Gpio_ConfigurePinForOutput(PROJECT_RGBLED_RED);
+    Mt3620_Gpio_Write(PROJECT_RGBLED_RED, false);
 
-    Mt3620_Gpio_Write(PROJECT_RGBLED_RED, led1RedOn);
+    // Initialize ADC
+    EnableAdc();
 
-
-    // TA7642 PWM GPIO
-    Mt3620_Gpio_ConfigurePinForOutput(TA7642_SOCKET_NUMBER - 1);
-
-    Gpt_LaunchTimerMs(TimerGpt0, 500, HandleBlinkTimerIrq);
-
-    for (;;) {
-        __asm__("wfi");
-    }
-
-	// ADC Initialization
-	EnableAdc();
-
+    // Initialize intercore comm buffers
     BufferHeader *outbound, *inbound;
     uint32_t sharedBufSize = 0;
     while (GetIntercoreBuffers(&outbound, &inbound, &sharedBufSize) == -1)
     {
         // Empty block, waiting for buffers to become available
     }
+
+    // Start PWM timer
+    pwm_control = PWM_COUNTER_MAX / 2;
+    start_pwm_timer(pwm_control);
+
+    // Tune up PWM control value
+
+    /*
+    for (;;) {
+        __asm__("wfi");
+    }
+    */
 
     // Main program loop
 #   define PAYLOAD_START_IDX   20
@@ -287,13 +320,55 @@ default_exception_handler(void)
     }
 }
 
-static void 
-HandleBlinkTimerIrq(void)
+static void
+start_pwm_timer(uint32_t counter)
 {
-    led1RedOn = !led1RedOn;
-    Mt3620_Gpio_Write(PROJECT_RGBLED_RED, led1RedOn);
+    // GPT timer doesn't work for counter values 0 and 1
 
-    Gpt_LaunchTimerMs(TimerGpt0, 500, HandleBlinkTimerIrq);
+    if (counter == 0)
+    {
+        handle_irq_pwm_timer();     // Skip timer, start IRQ handler
+    }
+    else if (counter == 1)
+    {
+        // Wait approx 80 usec
+        for (uint32_t i = 0; i < 180; i++)
+        {
+            // Empty block
+        }
+
+        handle_irq_pwm_timer();     // Start IRQ handler
+    }
+    else
+    {
+        if (counter > PWM_COUNTER_MAX)
+        {
+            counter = PWM_COUNTER_MAX;
+        }
+        // Start timer normally
+        Gpt_LaunchTimer32k(TimerGpt0, counter, handle_irq_pwm_timer);
+    }
+}
+
+
+static void
+handle_irq_pwm_timer(void)
+{
+    static bool b_is_pwm_gpio_high = true;
+
+    // Calculate this pulse duration counter
+    uint32_t counter = (b_is_pwm_gpio_high) ?
+        pwm_control : PWM_COUNTER_MAX - pwm_control;
+
+    if (counter > 0)
+    {
+        // Do not change output GPIO state if requested pulse duration is 0
+        Mt3620_Gpio_Write(TA7642_GPIO_PWM, b_is_pwm_gpio_high);
+    }
+
+    b_is_pwm_gpio_high = !b_is_pwm_gpio_high;
+
+    start_pwm_timer(counter);
 }
 
 static void

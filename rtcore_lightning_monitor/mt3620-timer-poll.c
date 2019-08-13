@@ -18,8 +18,7 @@ void Gpt3_WaitUs(int microseconds)
     WriteReg32(GPT_BASE, 0x50, ctrlOn);
 
     // GPT3_CNT
-    while (ReadReg32(GPT_BASE, 0x58) < microseconds) 
-    {
+    while (ReadReg32(GPT_BASE, 0x58) < microseconds) {
         // empty.
     }
 
