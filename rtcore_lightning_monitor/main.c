@@ -51,8 +51,13 @@ extern uint32_t StackTop;   // &StackTop == end of TCM0
 #define TA7642_ADC_CH       2
 #endif // TA7642_SOCKET_NUMBER == 1
 
+// Maximum useable TA7642 signal amplitude before clipping
+// signal mV = (signal uint32 * 2500) / 0xFFF
+#define TA7642_ADC_MAX  3276     // ~ 2.0 V at 2.5V Vref
+
 // Maximum allowed counter value for PWM duty timer
 #define PWM_DUTY_MAX   40        // ~ 500 Hz at 32 kHz timer clock
+
 
 // String CR + LF.
 #define STRING_CRLF  "\r\n"
@@ -141,7 +146,8 @@ static const uintptr_t ExceptionVectorTable[EXCEPTION_COUNT]
 
 
 // PWM duty control variable. Allowed values: 0 - PWM_DUTY_MAX
-static uint8_t pwm_duty_ctrl;
+// PWM duty ratio is directly controlled by changing this value
+static uint8_t g_pwm_duty_ctrl;
 
 /*******************************************************************************
 * Application entry point
@@ -154,7 +160,7 @@ rtcore_main(void)
 	{
 		uint32_t u32;
 		uint8_t u8[4];
-	} analog_data;
+	} ADC_data;
 
     // SCB->VTOR = ExceptionVectorTable
     WriteReg32(SCB_BASE, 0x08, (uint32_t)ExceptionVectorTable);
@@ -211,16 +217,46 @@ rtcore_main(void)
     }
 
     // Start PWM timer
-    pwm_duty_ctrl = PWM_DUTY_MAX / 2;
-    pwm_duty_ctrl = 1;
-    start_pwm_timer(pwm_duty_ctrl);
 
-    // Set up PWM control value
-    Uart_WriteStringPoll("GPT2: ");
+    // Calibrate PWM control value
+    Uart_WriteStringPoll("Setup PWM" STRING_CRLF);
+    g_pwm_duty_ctrl = 30;
+    start_pwm_timer(g_pwm_duty_ctrl);     // PWM pin Switch off
+    Gpt2_WaitMs(250);                     // Wait for full capacitor discharge
+
+
+    for (;;) {
+        __asm__("wfi");
+    }
+
+
+    do
+    {
+
+    } while (true);
+
+
+    bool is_calibrated = false;
+    for (uint8_t pwm_duty = 1; pwm_duty <= PWM_DUTY_MAX; pwm_duty++)
+    {
+        // Increase PWM duty until there is full signal on ADC input
+        // or PWM duty is on max level
+
+        g_pwm_duty_ctrl = pwm_duty;      // Update PWM duty ratio
+        Gpt2_WaitMs(250);                // Wait for capacitor charging
+
+        ADC_data.u32 = ReadAdc(TA7642_ADC_CH);
+
+    }
+
+    if (!is_calibrated)
+    {
+
+    }
+
     Uart_WriteIntegerPoll(Gpt2_GetValue());
     Uart_WriteStringPoll(STRING_CRLF);
 
-    Gpt2_WaitMs(1500);
 
     Uart_WriteStringPoll("GPT2: ");
     Uart_WriteIntegerPoll(Gpt2_GetValue());
@@ -297,11 +333,11 @@ rtcore_main(void)
 
         // Read ADC channel
         uint8_t adc_channel = 1;
-        analog_data.u32 = ReadAdc(adc_channel);
+        ADC_data.u32 = ReadAdc(adc_channel);
 
 #ifdef DEBUG_ENABLED
         uint32_t mV;
-        mV = (analog_data.u32 * 2500) / 0xFFF;
+        mV = (ADC_data.u32 * 2500) / 0xFFF;
         Uart_WriteStringPoll("ADC channel ");
         Uart_WriteIntegerPoll(adc_channel);
         Uart_WriteStringPoll(" : ");
@@ -317,7 +353,7 @@ rtcore_main(void)
 		{
 			// Copy ADC data to app buffer
             app_buf[PAYLOAD_START_IDX + buf_idx] = 
-                analog_data.u8[analog_buf_idx++];
+                ADC_data.u8[analog_buf_idx++];
 		}
 
 		// Send buffer to A7 Core
@@ -375,7 +411,7 @@ handle_irq_pwm_timer(void)
 
     // Calculate this pulse duration counter
     uint32_t counter = (b_is_pwm_gpio_high) ?
-        pwm_duty_ctrl : PWM_DUTY_MAX - pwm_duty_ctrl;
+        g_pwm_duty_ctrl : PWM_DUTY_MAX - g_pwm_duty_ctrl;
 
     if (counter > 0)
     {
