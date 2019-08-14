@@ -72,4 +72,10 @@ void Gpt2_LaunchTimer(uint32_t initial_value, bool speed_flag);
 /// </summary>
 uint32_t Gpt2_GetValue(void);
 
+/// <summary>
+///     Blocking millisecond wait loop.
+/// </summary>
+/// <param name="milliseconds">Waiting time in milliseconds.</param>
+void Gpt2_WaitMs(uint32_t milliseconds);
+
 #endif /* MT3620_TIMER_H */

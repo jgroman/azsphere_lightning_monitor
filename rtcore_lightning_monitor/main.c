@@ -37,7 +37,7 @@ extern uint32_t StackTop;   // &StackTop == end of TCM0
 
 #define APP_NAME "RTCore Lightning Monitor"
 
-// Select which Click Socket (1 or 2) the TA7642 radio is connected to
+// Select which Click Socket (1 or 2) the TA7642 receiver module is connected to
 // TA7642 PWM - Socket PWM (GPIO 0 / 1)
 // TA7642 OUT - Socket AN  (ADC0 ch 1 / 2)
 // TA7642 GND - Socket GND
@@ -51,8 +51,8 @@ extern uint32_t StackTop;   // &StackTop == end of TCM0
 #define TA7642_ADC_CH       2
 #endif // TA7642_SOCKET_NUMBER == 1
 
-// Maximum allowed value for PWM counter
-#define PWM_COUNTER_MAX   32
+// Maximum allowed counter value for PWM duty timer
+#define PWM_DUTY_MAX   40        // ~ 500 Hz at 32 kHz timer clock
 
 // String CR + LF.
 #define STRING_CRLF  "\r\n"
@@ -90,6 +90,9 @@ start_pwm_timer(uint32_t counter);
  */
 static void
 handle_irq_pwm_timer(void);
+
+static void
+handle_irq_gpt(void);
 
 /** 
  * @brief Print bytes from buffer.
@@ -137,8 +140,8 @@ static const uintptr_t ExceptionVectorTable[EXCEPTION_COUNT]
             (uintptr_t)default_exception_handler };
 
 
-// PWM duty control variable. Allowed values: 0 - PWM_COUNTER_MAX
-static uint8_t pwm_control;
+// PWM duty control variable. Allowed values: 0 - PWM_DUTY_MAX
+static uint8_t pwm_duty_ctrl;
 
 /*******************************************************************************
 * Application entry point
@@ -156,10 +159,16 @@ rtcore_main(void)
     // SCB->VTOR = ExceptionVectorTable
     WriteReg32(SCB_BASE, 0x08, (uint32_t)ExceptionVectorTable);
 
+    // Reset GPT2 timer, set 1 kHz clock
+    Gpt2_LaunchTimer(0, 0);
+
 #   ifdef DEBUG_ENABLED
     // UART initialization and app header
     Uart_Init();
     Uart_WriteStringPoll(APP_NAME " ("__DATE__ ", " __TIME__")" STRING_CRLF);
+    Uart_WriteIntegerPoll(Gpt2_GetValue());
+    Uart_WriteStringPoll(STRING_CRLF);
+
 #   endif // DEBUG_ENABLED
 
     // Initialize GPT
@@ -202,10 +211,20 @@ rtcore_main(void)
     }
 
     // Start PWM timer
-    pwm_control = PWM_COUNTER_MAX / 2;
-    start_pwm_timer(pwm_control);
+    pwm_duty_ctrl = PWM_DUTY_MAX / 2;
+    pwm_duty_ctrl = 1;
+    start_pwm_timer(pwm_duty_ctrl);
 
-    // Tune up PWM control value
+    // Set up PWM control value
+    Uart_WriteStringPoll("GPT2: ");
+    Uart_WriteIntegerPoll(Gpt2_GetValue());
+    Uart_WriteStringPoll(STRING_CRLF);
+
+    Gpt2_WaitMs(1500);
+
+    Uart_WriteStringPoll("GPT2: ");
+    Uart_WriteIntegerPoll(Gpt2_GetValue());
+    Uart_WriteStringPoll(STRING_CRLF);
 
     /*
     for (;;) {
@@ -323,7 +342,8 @@ default_exception_handler(void)
 static void
 start_pwm_timer(uint32_t counter)
 {
-    // GPT timer doesn't work for counter values 0 and 1
+    // GPT timer doesn't work for counter values 0 and 1 so we have to
+    // skip using it for those values
 
     if (counter == 0)
     {
@@ -331,19 +351,16 @@ start_pwm_timer(uint32_t counter)
     }
     else if (counter == 1)
     {
-        // Wait approx 80 usec
-        for (uint32_t i = 0; i < 180; i++)
-        {
-            // Empty block
-        }
+        // Wait approx one pulse length
+        Gpt3_WaitUs(70);
 
         handle_irq_pwm_timer();     // Start IRQ handler
     }
-    else
+    else   // Counter is  > 1
     {
-        if (counter > PWM_COUNTER_MAX)
+        if (counter > PWM_DUTY_MAX)
         {
-            counter = PWM_COUNTER_MAX;
+            counter = PWM_DUTY_MAX;
         }
         // Start timer normally
         Gpt_LaunchTimer32k(TimerGpt0, counter, handle_irq_pwm_timer);
@@ -358,7 +375,7 @@ handle_irq_pwm_timer(void)
 
     // Calculate this pulse duration counter
     uint32_t counter = (b_is_pwm_gpio_high) ?
-        pwm_control : PWM_COUNTER_MAX - pwm_control;
+        pwm_duty_ctrl : PWM_DUTY_MAX - pwm_duty_ctrl;
 
     if (counter > 0)
     {
@@ -369,6 +386,12 @@ handle_irq_pwm_timer(void)
     b_is_pwm_gpio_high = !b_is_pwm_gpio_high;
 
     start_pwm_timer(counter);
+}
+
+static void
+handle_irq_gpt(void)
+{
+ 
 }
 
 static void

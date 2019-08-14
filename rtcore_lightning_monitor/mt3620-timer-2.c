@@ -125,4 +125,15 @@ Gpt2_GetValue(void)
     return ReadReg32(GPT_BASE, 0x34);
 }
 
+void
+Gpt2_WaitMs(uint32_t milliseconds)
+{
+    uint32_t now = Gpt2_GetValue();
+    // Equation to prevent 32-bit GPT2 overflow error
+    while (Gpt2_GetValue() - now < milliseconds)    
+    {
+        // Empty loop
+    }
+}
+
 /* [] END OF FILE */
