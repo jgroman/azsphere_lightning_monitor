@@ -13,11 +13,13 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <errno.h>
 
 #include "mt3620-baremetal.h"
 #include "mt3620-intercore.h"
 #include "mt3620-uart-poll.h"
+#include "mt3620-timer-poll.h"
 #include "mt3620-adc.h"
 #include "mt3620-timer-2.h"
 #include "mt3620-gpio.h"
@@ -53,14 +55,38 @@ extern uint32_t StackTop;   // &StackTop == end of TCM0
 
 // Maximum useable TA7642 signal amplitude before clipping
 // signal mV = (signal uint32 * 2500) / 0xFFF
-#define TA7642_ADC_MAX  3276     // ~ 2.0 V at 2.5V Vref
+#define TA7642_ADC_MAX  1802     // ~ 1.1 V at 2.5V Vref
+
+// The minimum difference between two output measurements to be considered
+// as detected noise. Setting this affects detector sensitivity - higher
+// value means less sensitivity.
+#define TA7642_NOISE_THRSHLD    40
+
+// Detection level thresholds
+#define TA7642_LEVEL_THRSHLD_0  60
+#define TA7642_LEVEL_THRSHLD_1  120
+#define TA7642_LEVEL_THRSHLD_2  180
+#define TA7642_LEVEL_THRSHLD_MAX  220
 
 // Maximum allowed counter value for PWM duty timer
-#define PWM_DUTY_MAX   40        // ~ 500 Hz at 32 kHz timer clock
+// 40  ~ 500 Hz at 32 kHz timer clock
+// 64  ~ 330 Hz at 32 kHz timer clock
+// 100 ~ 215 Hz at 32 kHz timer clock
+#define PWM_DUTY_MAX   100
 
+// Calculate optimal operational PWM duty cycle from calibrated PWM duty
+// Experiment with this function to find the best detecting experience
+// try also e.g. (pwm_max / 2) or ((pwm_max / 4) * 3)
+#define PWM_TUNE_UP(pwm_max) ((pwm_max / 3) * 2)
 
 // String CR + LF.
 #define STRING_CRLF  "\r\n"
+
+// One second in milliseconds
+#define MS_1_SECOND 1000
+
+// One hour in seconds
+#define S_1_HOUR    3600
  
 // Uncomment this directive to enable UART debug messages output
 #define DEBUG_ENABLED
@@ -98,6 +124,17 @@ handle_irq_pwm_timer(void);
 
 static void
 handle_irq_gpt(void);
+
+/**
+ * @brief Calibrate PWM duty ratio to obtain best TA7642 sensivity.
+ *
+ * Finds the lowest possible duty ratio (~ operating voltage) when TA7642 starts
+ * working with full amplification. This is determined by measuring 1.1 V on 
+ * the module output pin.
+ * The result is stored in global PWM control g_pwm_duty_ctrl.
+ */
+static uint32_t
+calibrate_pwm(void);
 
 /** 
  * @brief Print bytes from buffer.
@@ -149,6 +186,12 @@ static const uintptr_t ExceptionVectorTable[EXCEPTION_COUNT]
 // PWM duty ratio is directly controlled by changing this value
 static uint8_t g_pwm_duty_ctrl;
 
+static union Analog_data
+{
+    uint32_t u32;
+    uint8_t u8[4];
+} g_adc_data;
+
 /*******************************************************************************
 * Application entry point
 *******************************************************************************/
@@ -156,12 +199,6 @@ static uint8_t g_pwm_duty_ctrl;
 static _Noreturn void 
 rtcore_main(void)
 {
-	union Analog_data
-	{
-		uint32_t u32;
-		uint8_t u8[4];
-	} ADC_data;
-
     // SCB->VTOR = ExceptionVectorTable
     WriteReg32(SCB_BASE, 0x08, (uint32_t)ExceptionVectorTable);
 
@@ -171,10 +208,8 @@ rtcore_main(void)
 #   ifdef DEBUG_ENABLED
     // UART initialization and app header
     Uart_Init();
-    Uart_WriteStringPoll(APP_NAME " ("__DATE__ ", " __TIME__")" STRING_CRLF);
-    Uart_WriteIntegerPoll(Gpt2_GetValue());
     Uart_WriteStringPoll(STRING_CRLF);
-
+    Uart_WriteStringPoll(APP_NAME " ("__DATE__ ", " __TIME__")" STRING_CRLF);
 #   endif // DEBUG_ENABLED
 
     // Initialize GPT
@@ -186,24 +221,24 @@ rtcore_main(void)
         .baseAddr = 0x38010000,
         .type = GpioBlock_PWM,
         .firstPin = 0,
-        .pinCount = 4 
+        .pinCount = 4
     };
     Mt3620_Gpio_AddBlock(&pwm0);
 
     // -- Configure Click Socket PWM pin for TA7642 module PWM input
     Mt3620_Gpio_ConfigurePinForOutput(TA7642_GPIO_PWM);
 
-    // -- Block includes led1RedGpio, GPIO8.
-    static const GpioBlock pwm2 = {
-        .baseAddr = 0x38030000,
+    // -- Block includes App LED GPIO4.
+    static const GpioBlock pwm1 = {
+        .baseAddr = 0x38020000,
         .type = GpioBlock_PWM,
-        .firstPin = 8,
-        .pinCount = 4 
+        .firstPin = 4,
+        .pinCount = 4
     };
-    Mt3620_Gpio_AddBlock(&pwm2);
+    Mt3620_Gpio_AddBlock(&pwm1);
 
-    Mt3620_Gpio_ConfigurePinForOutput(PROJECT_RGBLED_RED);
-    Mt3620_Gpio_Write(PROJECT_RGBLED_RED, false);
+    // -- Configure App LED GPIO4 for output
+    Mt3620_Gpio_ConfigurePinForOutput(PROJECT_APP_LED);
 
     // Initialize ADC
     EnableAdc();
@@ -216,65 +251,117 @@ rtcore_main(void)
         // Empty block, waiting for buffers to become available
     }
 
-    // Start PWM timer
-
-    // Calibrate PWM control value
-    Uart_WriteStringPoll("Setup PWM" STRING_CRLF);
-    g_pwm_duty_ctrl = 30;
-    start_pwm_timer(g_pwm_duty_ctrl);     // PWM pin Switch off
-    Gpt2_WaitMs(250);                     // Wait for full capacitor discharge
-
-
-    for (;;) {
-        __asm__("wfi");
-    }
-
-
-    do
-    {
-
-    } while (true);
-
-
-    bool is_calibrated = false;
-    for (uint8_t pwm_duty = 1; pwm_duty <= PWM_DUTY_MAX; pwm_duty++)
-    {
-        // Increase PWM duty until there is full signal on ADC input
-        // or PWM duty is on max level
-
-        g_pwm_duty_ctrl = pwm_duty;      // Update PWM duty ratio
-        Gpt2_WaitMs(250);                // Wait for capacitor charging
-
-        ADC_data.u32 = ReadAdc(TA7642_ADC_CH);
-
-    }
-
-    if (!is_calibrated)
-    {
-
-    }
-
-    Uart_WriteIntegerPoll(Gpt2_GetValue());
-    Uart_WriteStringPoll(STRING_CRLF);
-
-
-    Uart_WriteStringPoll("GPT2: ");
-    Uart_WriteIntegerPoll(Gpt2_GetValue());
-    Uart_WriteStringPoll(STRING_CRLF);
-
-    /*
-    for (;;) {
-        __asm__("wfi");
-    }
-    */
+    // Calibrate PWM for AGC (Automatic Gain Control)
+    uint32_t ta7642_output_avg;
+    ta7642_output_avg = calibrate_pwm();
 
     // Main program loop
 #   define PAYLOAD_START_IDX   20
 #   define MAX_APP_BUFFER_SIZE 256
     uint8_t app_buf[MAX_APP_BUFFER_SIZE];
     uint32_t read_bytes_count = sizeof(app_buf);
+
+    uint32_t ta7642_output;
+    int32_t output_delta;
+    uint8_t  detections_per_second = 0;
+    uint32_t detection_level = 0;
+    uint16_t level_decay = 0;
+    uint16_t idle_timer_sec = 0;
+    uint32_t last_gpt2_value = Gpt2_GetValue();
+
     for (;;)
 	{
+        // Read current TA7642 output voltage
+        ta7642_output = ReadAdc(TA7642_ADC_CH);
+        ta7642_output_avg = ((ta7642_output_avg * 15) + ta7642_output) / 16;
+
+        output_delta = (int32_t)ta7642_output_avg - (int32_t)ta7642_output;
+        if (output_delta >= TA7642_NOISE_THRSHLD)
+        {
+#           ifdef DEBUG_ENABLED
+            Uart_WriteIntegerPoll(output_delta);
+            Uart_WriteStringPoll(STRING_CRLF);
+#           endif // DEBUG_ENABLED
+
+            // Noise detected, might be lightning
+            // Switch App LED on
+            Mt3620_Gpio_Write(PROJECT_APP_LED, false);
+
+            detections_per_second++;
+            if (detections_per_second >= 8)
+            {
+                // Clip detections at 8 max, at this count it is probably
+                // just interference instead of lightning
+                detections_per_second = 8;
+            }
+        }
+        else
+        {
+            // Switch App LED off
+            Mt3620_Gpio_Write(PROJECT_APP_LED, true);
+        }
+
+        if (Gpt2_GetValue() - last_gpt2_value >= MS_1_SECOND)
+        {
+            // One second has passed since the last results update
+            if (detections_per_second > 1)
+            {
+                detection_level += detections_per_second;
+            }
+
+            // Detection level decay during time
+            level_decay = (detection_level >> 3);
+            detection_level = detection_level - level_decay;
+
+            if (detection_level > TA7642_LEVEL_THRSHLD_MAX)
+            {
+                // Clip detection level if over allowed maximum
+                detection_level = TA7642_LEVEL_THRSHLD_MAX;
+            }
+
+            if (level_decay == 0)
+            {
+                idle_timer_sec++;
+                if (idle_timer_sec >= S_1_HOUR)
+                {
+                    // No detections for one hour, recalibrate PWM.
+                    idle_timer_sec = 0;
+                    calibrate_pwm();
+#                   ifdef DEBUG_ENABLED
+                    Uart_WriteStringPoll("Recalibrating PWM after 1 hour idle." STRING_CRLF);
+#                   endif // DEBUG_ENABLED
+                }
+            }
+            else
+            {
+                // Reset idle timer
+                idle_timer_sec = 0;
+            }
+
+#           ifdef DEBUG_ENABLED
+            Uart_WriteStringPoll("PWM:");
+            Uart_WriteIntegerPoll(g_pwm_duty_ctrl);
+            Uart_WriteStringPoll(" OUT:");
+            Uart_WriteIntegerPoll(ta7642_output);
+            Uart_WriteStringPoll(" AVG:");
+            Uart_WriteIntegerPoll(ta7642_output_avg);
+            Uart_WriteStringPoll(" DLT:");
+            Uart_WriteIntegerPoll(output_delta);
+            Uart_WriteStringPoll(" CNT:");
+            Uart_WriteIntegerPoll(detections_per_second);
+            Uart_WriteStringPoll(" LVL:");
+            Uart_WriteIntegerPoll(detection_level);
+            Uart_WriteStringPoll(" DCY:");
+            Uart_WriteIntegerPoll(level_decay);
+            Uart_WriteStringPoll(STRING_CRLF);
+#           endif // DEBUG_ENABLED
+
+            detections_per_second = 0;
+            last_gpt2_value = Gpt2_GetValue();
+        }
+
+
+
         // Read incoming data from A7 Core
         // On success, read_bytes_count is set to the number of read bytes.
         int dequeue_result = DequeueData(outbound, inbound, sharedBufSize, 
@@ -333,11 +420,11 @@ rtcore_main(void)
 
         // Read ADC channel
         uint8_t adc_channel = 1;
-        ADC_data.u32 = ReadAdc(adc_channel);
+        g_adc_data.u32 = ReadAdc(adc_channel);
 
 #ifdef DEBUG_ENABLED
         uint32_t mV;
-        mV = (ADC_data.u32 * 2500) / 0xFFF;
+        mV = (g_adc_data.u32 * 2500) / 0xFFF;
         Uart_WriteStringPoll("ADC channel ");
         Uart_WriteIntegerPoll(adc_channel);
         Uart_WriteStringPoll(" : ");
@@ -353,7 +440,7 @@ rtcore_main(void)
 		{
 			// Copy ADC data to app buffer
             app_buf[PAYLOAD_START_IDX + buf_idx] = 
-                ADC_data.u8[analog_buf_idx++];
+                g_adc_data.u8[analog_buf_idx++];
 		}
 
 		// Send buffer to A7 Core
@@ -373,6 +460,89 @@ default_exception_handler(void)
     {
         // Empty Block
     }
+}
+
+static uint32_t
+calibrate_pwm(void)
+{
+    // Calibrate PWM control value
+    // We are looking for the lowest possible duty ratio (~ operating voltage)
+    // when TA7642 starts working with full amplification. This is determined
+    // by measuring 1.1 V on the module output pin
+
+    uint32_t adc_result;
+
+    g_pwm_duty_ctrl = 0;
+    start_pwm_timer(g_pwm_duty_ctrl);     // PWM pin Switch off
+    Gpt2_WaitMs(250);                     // Wait for full capacitor discharge
+
+#   ifdef DEBUG_ENABLED
+    Uart_WriteStringPoll("Calibrating PWM ..." STRING_CRLF);
+#   endif // DEBUG_ENABLED
+
+    bool b_state_app_led = false;
+    bool b_is_locked_app_led = false;
+    Mt3620_Gpio_Write(PROJECT_APP_LED, b_state_app_led);
+
+    bool b_is_not_calibrated = true;
+    do
+    {
+        // Increase PWM duty until there is full signal on ADC input
+        // or PWM duty is on max level
+        for (uint8_t pwm_duty = 1; pwm_duty <= PWM_DUTY_MAX; pwm_duty++)
+        {
+            g_pwm_duty_ctrl = pwm_duty;      // Update PWM duty ratio
+            Gpt2_WaitMs(250);                // Wait for capacitor charging
+
+            // Flip App LED state to indicate progress
+            if (!b_is_locked_app_led)
+            {
+                b_state_app_led = !b_state_app_led;
+                Mt3620_Gpio_Write(PROJECT_APP_LED, b_state_app_led);
+            }
+
+            // Measure TA7642 module output voltage
+            adc_result = ReadAdc(TA7642_ADC_CH);
+            if (adc_result > TA7642_ADC_MAX)
+            {
+                // Voltage on TA7642 module output has reached required value
+                // Calibration was successful
+                b_is_not_calibrated = false;
+                break;
+            }
+        }
+
+        // There was at least one full PWM cycle without successful calibration
+        // Leave App LED on to indicate problem
+        if (b_is_not_calibrated)
+        {
+            b_is_locked_app_led = true;
+            b_state_app_led = false;        // LED output is active Low
+            Mt3620_Gpio_Write(PROJECT_APP_LED, b_state_app_led);
+
+#           ifdef DEBUG_ENABLED
+            Uart_WriteStringPoll("ERROR: No calibration." STRING_CRLF);
+#           endif // DEBUG_ENABLED
+        }
+    } while (b_is_not_calibrated);
+
+    // Switch App LED off
+    b_state_app_led = true;        // LED output is active Low
+    Mt3620_Gpio_Write(PROJECT_APP_LED, b_state_app_led);
+
+#   ifdef DEBUG_ENABLED
+    Uart_WriteStringPoll("Calibrated at PWM ");
+    Uart_WriteIntegerPoll(g_pwm_duty_ctrl);
+    Uart_WriteStringPoll(STRING_CRLF);
+#   endif // DEBUG_ENABLED
+
+    // "Tune up" operational PWM duty to be certain percentage of calibrated 
+    // value. See PWM_TUNE_UP macro.
+    g_pwm_duty_ctrl = PWM_TUNE_UP(g_pwm_duty_ctrl);
+
+    Gpt2_WaitMs(1000);
+
+    return(adc_result);
 }
 
 static void
@@ -409,18 +579,20 @@ handle_irq_pwm_timer(void)
 {
     static bool b_is_pwm_gpio_high = true;
 
-    // Calculate this pulse duration counter
+    // Calculate this pulse duration
     uint32_t counter = (b_is_pwm_gpio_high) ?
         g_pwm_duty_ctrl : PWM_DUTY_MAX - g_pwm_duty_ctrl;
 
+    // Do not change output GPIO state if requested pulse duration is 0
     if (counter > 0)
     {
-        // Do not change output GPIO state if requested pulse duration is 0
         Mt3620_Gpio_Write(TA7642_GPIO_PWM, b_is_pwm_gpio_high);
     }
 
+    // Prepare the next PWM pulse state
     b_is_pwm_gpio_high = !b_is_pwm_gpio_high;
 
+    // Start this pulse timer
     start_pwm_timer(counter);
 }
 

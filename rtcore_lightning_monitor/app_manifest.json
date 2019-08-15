@@ -9,7 +9,8 @@
     "AllowedApplicationConnections": [ "b56ecde8-24d3-4cff-816e-ac580d42d73e" ],
     "AllowedConnections": [],
     // GPIO PWM pins on socket 1 & 2
-    "Gpio": [ 0, 1, 8 ],
+    // APP LED at GPIO 4
+    "Gpio": [ 0, 1, 4 ],
     "Uart": [],
     // There is a single ADC0 8-pin block with multiple logical channels: 0,1,2
     "Adc": [ "ADC0" ],
