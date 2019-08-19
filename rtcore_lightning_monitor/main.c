@@ -58,15 +58,15 @@ extern uint32_t StackTop;   // &StackTop == end of TCM0
 #define TA7642_ADC_MAX  1802     // ~ 1.1 V at 2.5V Vref
 
 // The minimum difference between two output measurements to be considered
-// as detected noise. Setting this affects detector sensitivity - higher
+// as detected impulse. Setting this affects detector sensitivity - higher
 // value means less sensitivity.
-#define TA7642_NOISE_THRSHLD    40
+#define TA7642_NOISE_THRSHLD    70
 
 // Detection level thresholds
-#define TA7642_LEVEL_THRSHLD_0  60
-#define TA7642_LEVEL_THRSHLD_1  120
-#define TA7642_LEVEL_THRSHLD_2  180
-#define TA7642_LEVEL_THRSHLD_MAX  220
+#define TA7642_LEVEL_THRSHLD_0  2000
+#define TA7642_LEVEL_THRSHLD_1  4000
+#define TA7642_LEVEL_THRSHLD_2  6000
+#define TA7642_LEVEL_THRSHLD_MAX  7000
 
 // Maximum allowed counter value for PWM duty timer
 // 40  ~ 500 Hz at 32 kHz timer clock
@@ -261,12 +261,25 @@ rtcore_main(void)
     uint8_t app_buf[MAX_APP_BUFFER_SIZE];
     uint32_t read_bytes_count = sizeof(app_buf);
 
+    // Current voltage on TA7642 output
     uint32_t ta7642_output;
+
+    // Difference between current and previous voltage on TA7642 output
+    // Used to detect impulses over TA7642_NOISE_THRSHLD
     int32_t output_delta;
-    uint8_t  detections_per_second = 0;
-    uint32_t detection_level = 0;
+
+    // Impulse detections per second times 32
+    uint16_t detections_1sec_m32 = 0;
+
+    uint16_t detection_level = 255;
+    
     uint16_t level_decay = 0;
+    
+    // Time since the last impulse detection. After one hour with no detection
+    // PWM is recalibrated
     uint16_t idle_timer_sec = 0;
+
+    // Previous value of free-running GPT2 millisecond timer
     uint32_t last_gpt2_value = Gpt2_GetValue();
 
     for (;;)
@@ -287,12 +300,13 @@ rtcore_main(void)
             // Switch App LED on
             Mt3620_Gpio_Write(PROJECT_APP_LED, false);
 
-            detections_per_second++;
-            if (detections_per_second >= 8)
+            // Increase impulse counter
+            detections_1sec_m32 += 32;
+            if (detections_1sec_m32 >= 250)
             {
                 // Clip detections at 8 max, at this count it is probably
                 // just interference instead of lightning
-                detections_per_second = 8;
+                detections_1sec_m32 = 250;
             }
         }
         else
@@ -304,13 +318,14 @@ rtcore_main(void)
         if (Gpt2_GetValue() - last_gpt2_value >= MS_1_SECOND)
         {
             // One second has passed since the last results update
-            if (detections_per_second > 1)
+            if (detections_1sec_m32 > 32)
             {
-                detection_level += detections_per_second;
+                // If there were at least two impulses, increase level
+                detection_level += detections_1sec_m32;
             }
 
             // Detection level decay during time
-            level_decay = (detection_level >> 3);
+            level_decay = (detection_level >> 8);
             detection_level = detection_level - level_decay;
 
             if (detection_level > TA7642_LEVEL_THRSHLD_MAX)
@@ -348,7 +363,7 @@ rtcore_main(void)
             Uart_WriteStringPoll(" DLT:");
             Uart_WriteIntegerPoll(output_delta);
             Uart_WriteStringPoll(" CNT:");
-            Uart_WriteIntegerPoll(detections_per_second);
+            Uart_WriteIntegerPoll(detections_1sec_m32);
             Uart_WriteStringPoll(" LVL:");
             Uart_WriteIntegerPoll(detection_level);
             Uart_WriteStringPoll(" DCY:");
@@ -356,7 +371,10 @@ rtcore_main(void)
             Uart_WriteStringPoll(STRING_CRLF);
 #           endif // DEBUG_ENABLED
 
-            detections_per_second = 0;
+            // Reset impulse counter
+            detections_1sec_m32 = 0;
+            
+            // Store current millisecond timer value
             last_gpt2_value = Gpt2_GetValue();
         }
 
