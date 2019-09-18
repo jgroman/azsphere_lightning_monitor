@@ -8,7 +8,13 @@
     // Partner Component IDs
     "AllowedApplicationConnections": [ "ac067706-9bda-425a-a766-a91a2c4e32c0" ],
     "AllowedConnections": [],
-    "Gpio": [ ],
+    "Gpio": [
+      "$PROJECT_BUTTON_1",
+      "$PROJECT_BUTTON_2"
+    ],
+    "I2cMaster": [
+      "$PROJECT_ISU2_I2C"
+    ],
     "Uart": [],
     "WifiConfig": false
   },

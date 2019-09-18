@@ -3,8 +3,11 @@
 * @file    main.c
 * @version 1.0.0
 *
-* Original work Copyright (c) 2019 Microsoft Corporation. All rights reserved.
-* Modified work Copyright (c) 2019 Jaroslav Groman
+* Azure Sphere RTCore app driver for lightning detecting TA7642 based AM radio
+* receiver.
+*
+* Parts of code Copyright (c) 2019 Microsoft Corporation. All rights reserved.
+* Copyright (c) 2019 Jaroslav Groman
 *
 * Licensed under the MIT License.
 *
