@@ -1,10 +1,5 @@
-/*
- * Original work Copyright (c) 2019 Microsoft Corporation. All rights reserved.
- * Modified work Copyright (c) 2019 Jaroslav Groman
- *
- * Licensed under the MIT License.
- */
-
+/* Copyright (c) Microsoft Corporation. All rights reserved.
+   Licensed under the MIT License. */
 
 #ifndef MT3620_TIMER_H
 #define MT3620_TIMER_H
@@ -56,26 +51,5 @@ void Gpt_HandleIrq1(void);
 /// <param name="periodMs">Period in milliseconds.</param>
 /// <param name="callback">Function to invoke in interrupt context when the timer expires.</param>
 void Gpt_LaunchTimerMs(TimerGpt gpt, uint32_t periodMs, Callback callback);
-
-void Gpt_LaunchTimer32k(TimerGpt gpt, uint32_t counter, Callback callback);
-
-/// <summary>
-///     Start freerunning GPT2 timer.
-/// </summary>
-/// <param name="initial_value">Initial timer value.</param>
-/// <param name="speed_flag">Timer speed unit: 0 ~ 1 kHz, 1 ~ 32 kHz.</param>
-void Gpt2_LaunchTimer(uint32_t initial_value, bool speed_flag);
-
-/// <summary>
-///     Read current GPT2 counter value.
-///     <para>The first value is available after 3T clock after enabling.</para>
-/// </summary>
-uint32_t Gpt2_GetValue(void);
-
-/// <summary>
-///     Blocking millisecond wait loop.
-/// </summary>
-/// <param name="milliseconds">Waiting time in milliseconds.</param>
-void Gpt2_WaitMs(uint32_t milliseconds);
 
 #endif /* MT3620_TIMER_H */

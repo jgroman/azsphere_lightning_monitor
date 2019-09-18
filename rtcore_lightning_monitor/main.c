@@ -1,3 +1,4 @@
+
 /***************************************************************************//**
 * @file    main.c
 * @version 1.0.0
@@ -21,7 +22,8 @@
 #include "mt3620-uart-poll.h"
 #include "mt3620-timer-poll.h"
 #include "mt3620-adc.h"
-#include "mt3620-timer-2.h"
+#include "mt3620-timer.h"
+#include "mt3620-timer-user.h"
 #include "mt3620-gpio.h"
 
 // Import project hardware abstraction
@@ -121,9 +123,6 @@ start_pwm_timer(uint32_t counter);
  */
 static void
 handle_irq_pwm_timer(void);
-
-static void
-handle_irq_gpt(void);
 
 /**
  * @brief Calibrate PWM duty ratio to obtain best TA7642 sensivity.
@@ -612,12 +611,6 @@ handle_irq_pwm_timer(void)
 
     // Start this pulse timer
     start_pwm_timer(counter);
-}
-
-static void
-handle_irq_gpt(void)
-{
- 
 }
 
 static void
