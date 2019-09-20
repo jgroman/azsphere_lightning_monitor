@@ -18,6 +18,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 
 #include "mt3620-baremetal.h"
@@ -437,6 +438,17 @@ rtcore_main(void)
         }
         Uart_WriteStringPoll(STRING_CRLF);
 #       endif // DEBUG_ENABLED
+
+        // Parse incoming message
+        size_t payload_length = read_bytes_count - PAYLOAD_START_IDX;
+        char rx_msg[32];
+
+        strncpy(rx_msg, (char *)app_buf + PAYLOAD_START_IDX + 1, payload_length);
+
+        Uart_WriteStringPoll("*** MSG:");
+        Uart_WriteStringPoll(rx_msg);
+        Uart_WriteStringPoll(STRING_CRLF);
+
 
         // Read ADC channel
         uint8_t adc_channel = 1;
