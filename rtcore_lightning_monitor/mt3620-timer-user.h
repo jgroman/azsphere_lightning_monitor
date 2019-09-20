@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 #include "mt3620-baremetal.h"
+#include "mt3620-timer.h"
 
 
 /// <summary>

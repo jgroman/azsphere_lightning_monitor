@@ -25,6 +25,15 @@ typedef enum {
 /// <summary>The GPT interrupts (and hence callbacks) run at this priority level.</summary>
 static const uint32_t GPT_PRIORITY = 2;
 
+typedef struct {
+    size_t ctrlRegOffset;
+    size_t icntRegOffset;
+} GptInfo;
+
+extern const uintptr_t GPT_BASE;
+extern volatile Callback timerCallbacks[TIMER_GPT_COUNT];
+extern const GptInfo gptRegOffsets[TIMER_GPT_COUNT];
+
 /// <summary>
 /// Call this once before registering any callbacks with <see cref="Gpt_LaunchTimerMs" />.
 /// </summary>

@@ -6,16 +6,11 @@
 #include "mt3620-baremetal.h"
 #include "mt3620-timer.h"
 
-static const uintptr_t GPT_BASE = 0x21030000;
+const uintptr_t GPT_BASE = 0x21030000;
 
-static volatile Callback timerCallbacks[TIMER_GPT_COUNT] = {[TimerGpt0] = NULL, [TimerGpt1] = NULL};
+volatile Callback timerCallbacks[TIMER_GPT_COUNT] = {[TimerGpt0] = NULL, [TimerGpt1] = NULL};
 
-typedef struct {
-    size_t ctrlRegOffset;
-    size_t icntRegOffset;
-} GptInfo;
-
-static const GptInfo gptRegOffsets[TIMER_GPT_COUNT] = {
+const GptInfo gptRegOffsets[TIMER_GPT_COUNT] = {
     [TimerGpt0] = {.ctrlRegOffset = 0x10, .icntRegOffset = 0x14},
     [TimerGpt1] = {.ctrlRegOffset = 0x20, .icntRegOffset = 0x24}};
 
