@@ -36,10 +36,10 @@
 *******************************************************************************/
 
 static int
-rtcore_send(const char *p_string);
+rtcore_send(const uint8_t *p_buffer, size_t byte_count);
 
 static int
-rtcore_receive(char *p_string);
+rtcore_receive(uint8_t *p_buffer, size_t byte_count);
 
 static bool
 rtcore_ping(void);
@@ -88,7 +88,7 @@ main(void)
         {
             // RTCore app didn't respond to PING request
             gb_is_termination_requested = true;
-            Log_Debug("RTCore App is not running or is unresponsive.\n");
+            Log_Debug("RTCore App is not ready.\n");
         }
     }
 
@@ -155,7 +155,7 @@ handle_request_data(void)
 {
     // Request data from RTCore app
     Log_Debug("Requesting data from RTCore\n");
-    (void)rtcore_send(RTCORE_MSG_REQUEST_DATA);
+    (void)rtcore_send(RTCORE_MSG_REQUEST_DATA, strlen(RTCORE_MSG_REQUEST_DATA));
 
     // Request data from MLX90614
 
@@ -174,7 +174,7 @@ handle_rtcore_receive(void)
         uint8_t u8[4];
     } analog_data;
 
-    (void)rtcore_receive(buf_rx);
+    (void)rtcore_receive(buf_rx, 4);
 
     // Copy data from Rx buffer to analog_data union
     for (int i = 0; i < sizeof(analog_data); i++)
@@ -196,9 +196,9 @@ handle_rtcore_receive(void)
 *******************************************************************************/
 
 static int
-rtcore_send(const char *p_string)
+rtcore_send(const uint8_t *p_buffer, size_t byte_count)
 {
-    int bytes_sent = send(g_fd_socket, p_string, strlen(p_string), 0);
+    int bytes_sent = send(g_fd_socket, p_buffer, byte_count, 0);
     if (bytes_sent == -1)
     {
         Log_Debug("ERROR: Unable to send message: %d (%s)\n",
@@ -210,10 +210,9 @@ rtcore_send(const char *p_string)
 }
 
 static int
-rtcore_receive(char *p_string)
+rtcore_receive(uint8_t *p_buffer, size_t byte_count)
 {
-    int bytes_received = recv(g_fd_socket, p_string, sizeof(p_string), 0);
-
+    int bytes_received = recv(g_fd_socket, p_buffer, byte_count, 0);
     if (bytes_received == -1)
     {
         Log_Debug("ERROR: Unable to receive message: %d (%s)\n",
@@ -227,23 +226,29 @@ rtcore_receive(char *p_string)
 static bool
 rtcore_ping(void)
 {
-    char buf_rx[32];
+    uint8_t buf[32];
+    uint32_t buf_len;
     bool b_result = false;
 
+    strcpy(buf, RTCORE_MSG_REQUEST_PING);
+    buf_len = strlen(RTCORE_MSG_REQUEST_PING) + 1;
+
     // Request PING from RTCore app
-    if (rtcore_send(RTCORE_MSG_REQUEST_PING) != -1)
+    if (rtcore_send(buf, buf_len) != -1)
     {
         // Check for PING reply
-        if ((rtcore_receive(buf_rx) != -1) && 
-            (strcmp(buf_rx, RTCORE_MSG_REPLY_PING) == 0))
+        int bytes_received = rtcore_receive(buf, 32);
+        if (bytes_received != -1)
         {
-            b_result = true;
+            if (strncmp(buf, RTCORE_MSG_REPLY_PING, (size_t)bytes_received) == 0)
+            {
+                // Received correct PING reply
+                b_result = true;
+            }
         }
     }
 
     return b_result;
 }
-
-
 
 /* [] END OF FILE */

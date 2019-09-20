@@ -97,6 +97,13 @@ extern uint32_t StackTop;   // &StackTop == end of TCM0
 // Uncomment this directive to enable UART debug messages output
 #define DEBUG_ENABLED
 
+#define RTCORE_MSG_REQUEST_PING     "ping"
+#define RTCORE_MSG_REPLY_PING       "pong"
+
+#define RTCORE_MSG_REQUEST_DATA     "reqd"
+#define RTCORE_MSG_REPLY_DATA       "drpl"
+
+
 /*******************************************************************************
 * Forward declarations of private functions
 *******************************************************************************/
@@ -147,6 +154,9 @@ print_bytes(const uint8_t *buf, int start, int end);
 
 static void 
 print_guid(const uint8_t *guid);
+
+static void
+debug_a7_message(uint8_t *buffer, uint32_t data_length);
 
 /*******************************************************************************
 * Global variables
@@ -295,8 +305,8 @@ rtcore_main(void)
         if (output_delta >= TA7642_NOISE_THRSHLD)
         {
 #           ifdef DEBUG_ENABLED
-            Uart_WriteIntegerPoll(output_delta);
-            Uart_WriteStringPoll(STRING_CRLF);
+            //Uart_WriteIntegerPoll(output_delta);
+            //Uart_WriteStringPoll(STRING_CRLF);
 #           endif // DEBUG_ENABLED
 
             // Noise detected, might be lightning
@@ -307,15 +317,15 @@ rtcore_main(void)
             detections_1sec_m32 += 32;
             if (detections_1sec_m32 >= 250)
             {
-                // Clip detections at 8 max, at this count it is probably
-                // just interference instead of lightning
-                detections_1sec_m32 = 250;
+// Clip detections at 8 max, at this count it is probably
+// just interference instead of lightning
+detections_1sec_m32 = 250;
             }
         }
         else
         {
-            // Switch App LED off
-            Mt3620_Gpio_Write(PROJECT_APP_LED, true);
+        // Switch App LED off
+        Mt3620_Gpio_Write(PROJECT_APP_LED, true);
         }
 
         if (Gpt2_GetValue() - last_gpt2_value >= MS_1_SECOND)
@@ -376,108 +386,75 @@ rtcore_main(void)
 
             // Reset impulse counter
             detections_1sec_m32 = 0;
-            
+
             // Store current millisecond timer value
             last_gpt2_value = Gpt2_GetValue();
         }
 
-
-
         // Read incoming data from A7 Core
         // On success, read_bytes_count is set to the number of read bytes.
-        int dequeue_result = DequeueData(outbound, inbound, sharedBufSize, 
+        int dequeue_result = DequeueData(outbound, inbound, sharedBufSize,
             app_buf, &read_bytes_count);
 
         if (dequeue_result == -1 || read_bytes_count < PAYLOAD_START_IDX)
-		{
+        {
             continue;
         }
 
 #       ifdef DEBUG_ENABLED
-        // Print incoming message header
-        Uart_WriteStringPoll("Received message of ");
-        Uart_WriteIntegerPoll(read_bytes_count);
-        Uart_WriteStringPoll("bytes:" STRING_CRLF);
-
-        // Print the Component Id (A7 Core)
-        Uart_WriteStringPoll("  Component Id (16 bytes): ");
-        print_guid(app_buf);
-        Uart_WriteStringPoll(STRING_CRLF);
-
-        // Print reserved field as little-endian 4-byte integer.
-        Uart_WriteStringPoll("  Reserved (4 bytes): ");
-        print_bytes(app_buf, 19, 16);
-        Uart_WriteStringPoll(STRING_CRLF);
-
-        // Print message as hex.
-        size_t payloadBytes = read_bytes_count - PAYLOAD_START_IDX;
-        Uart_WriteStringPoll("  Payload (");
-        Uart_WriteIntegerPoll(payloadBytes);
-        Uart_WriteStringPoll(" bytes as hex): ");
-
-        for (size_t i = PAYLOAD_START_IDX; i < read_bytes_count; ++i)
-        {
-            Uart_WriteHexBytePoll(app_buf[i]);
-            if (i != read_bytes_count - 1)
-            {
-                Uart_WriteStringPoll(":");
-            }
-        }
-        Uart_WriteStringPoll(STRING_CRLF);
-
-        // Print message as text.
-        Uart_WriteStringPoll("  Payload (");
-        Uart_WriteIntegerPoll(payloadBytes);
-        Uart_WriteStringPoll(" bytes as text): ");
-        char printed_char_str[2];
-        printed_char_str[1] = '\0';
-        for (size_t i = PAYLOAD_START_IDX; i < read_bytes_count; ++i)
-        {
-            printed_char_str[0] = isprint(app_buf[i]) ? app_buf[i] : '.';
-            Uart_WriteStringPoll(printed_char_str);
-        }
-        Uart_WriteStringPoll(STRING_CRLF);
+        debug_a7_message(app_buf, read_bytes_count);
 #       endif // DEBUG_ENABLED
 
         // Parse incoming message
         size_t payload_length = read_bytes_count - PAYLOAD_START_IDX;
         char rx_msg[32];
 
-        strncpy(rx_msg, (char *)app_buf + PAYLOAD_START_IDX + 1, payload_length);
+        strncpy(rx_msg, (char *)app_buf + PAYLOAD_START_IDX, payload_length);
 
-        Uart_WriteStringPoll("*** MSG:");
-        Uart_WriteStringPoll(rx_msg);
-        Uart_WriteStringPoll(STRING_CRLF);
+        if (strncmp(rx_msg, RTCORE_MSG_REQUEST_PING, payload_length) == 0)
+        {
+            // Received Ping request
+            strcpy((char *)app_buf + PAYLOAD_START_IDX, RTCORE_MSG_REPLY_PING);
 
+            // Send buffer to A7 Core
+            EnqueueData(inbound, outbound, sharedBufSize, app_buf,
+                PAYLOAD_START_IDX + strlen(RTCORE_MSG_REPLY_PING) + 1);
+        }
+        else if (strncmp(rx_msg, RTCORE_MSG_REQUEST_DATA, payload_length) == 0)
+        {
+            // Received Data request
 
-        // Read ADC channel
-        uint8_t adc_channel = 1;
-        g_adc_data.u32 = ReadAdc(adc_channel);
+            // Read ADC channel
+            uint8_t adc_channel = 1;
+            g_adc_data.u32 = ReadAdc(adc_channel);
 
-#ifdef DEBUG_ENABLED
-        uint32_t mV;
-        mV = (g_adc_data.u32 * 2500) / 0xFFF;
-        Uart_WriteStringPoll("ADC channel ");
-        Uart_WriteIntegerPoll(adc_channel);
-        Uart_WriteStringPoll(" : ");
-        Uart_WriteIntegerPoll(mV / 1000);
-        Uart_WriteStringPoll(".");
-        Uart_WriteIntegerWidthPoll(mV % 1000, 3);
-        Uart_WriteStringPoll(" V");
-        Uart_WriteStringPoll(STRING_CRLF);
-#endif // DEBUG_ENABLED
+#           ifdef DEBUG_ENABLED
+            uint32_t mV;
+            mV = (g_adc_data.u32 * 2500) / 0xFFF;
+            Uart_WriteStringPoll("ADC channel ");
+            Uart_WriteIntegerPoll(adc_channel);
+            Uart_WriteStringPoll(" : ");
+            Uart_WriteIntegerPoll(mV / 1000);
+            Uart_WriteStringPoll(".");
+            Uart_WriteIntegerWidthPoll(mV % 1000, 3);
+            Uart_WriteStringPoll(" V");
+            Uart_WriteStringPoll(STRING_CRLF);
+#           endif // DEBUG_ENABLED
 
-        uint8_t analog_buf_idx = 0;
-		for (int buf_idx = 0; buf_idx < 4; buf_idx++)
-		{
-			// Copy ADC data to app buffer
-            app_buf[PAYLOAD_START_IDX + buf_idx] = 
-                g_adc_data.u8[analog_buf_idx++];
-		}
+            uint8_t analog_buf_idx = 0;
+            for (int buf_idx = 0; buf_idx < 4; buf_idx++)
+            {
+                // Copy ADC data to app buffer
+                app_buf[PAYLOAD_START_IDX + buf_idx] =
+                    g_adc_data.u8[analog_buf_idx++];
+            }
 
-		// Send buffer to A7 Core
-        EnqueueData(inbound, outbound, sharedBufSize, app_buf, 
-            PAYLOAD_START_IDX + 4);
+            // Send buffer to A7 Core
+            EnqueueData(inbound, outbound, sharedBufSize, app_buf,
+                PAYLOAD_START_IDX + 4);
+
+        }
+
     }
 }
 
@@ -652,6 +629,54 @@ print_guid(const uint8_t *guid)
     print_bytes(guid, 8, 9); // 2 bytes
     Uart_WriteStringPoll("-");
     print_bytes(guid, 10, 15); // 6 bytes
+}
+
+static void
+debug_a7_message(uint8_t *buffer, uint32_t data_length)
+{
+    // Print incoming message header
+    Uart_WriteStringPoll("Received message of ");
+    Uart_WriteIntegerPoll(data_length);
+    Uart_WriteStringPoll("bytes:" STRING_CRLF);
+
+    // Print the Component Id (A7 Core)
+    Uart_WriteStringPoll("  Component Id (16 bytes): ");
+    print_guid(buffer);
+    Uart_WriteStringPoll(STRING_CRLF);
+
+    // Print reserved field as little-endian 4-byte integer.
+    Uart_WriteStringPoll("  Reserved (4 bytes): ");
+    print_bytes(buffer, 19, 16);
+    Uart_WriteStringPoll(STRING_CRLF);
+
+    // Print message as hex.
+    size_t payloadBytes = data_length - PAYLOAD_START_IDX;
+    Uart_WriteStringPoll("  Payload (");
+    Uart_WriteIntegerPoll(payloadBytes);
+    Uart_WriteStringPoll(" bytes as hex): ");
+
+    for (size_t i = PAYLOAD_START_IDX; i < data_length; ++i)
+    {
+        Uart_WriteHexBytePoll(buffer[i]);
+        if (i != data_length - 1)
+        {
+            Uart_WriteStringPoll(":");
+        }
+    }
+    Uart_WriteStringPoll(STRING_CRLF);
+
+    // Print message as text.
+    Uart_WriteStringPoll("  Payload (");
+    Uart_WriteIntegerPoll(payloadBytes);
+    Uart_WriteStringPoll(" bytes as text): ");
+    char printed_char_str[2];
+    printed_char_str[1] = '\0';
+    for (size_t i = PAYLOAD_START_IDX; i < data_length; ++i)
+    {
+        printed_char_str[0] = isprint(buffer[i]) ? buffer[i] : '.';
+        Uart_WriteStringPoll(printed_char_str);
+    }
+    Uart_WriteStringPoll(STRING_CRLF);
 }
 
 /* [] END OF FILE */
