@@ -35,6 +35,14 @@
 * Forward declarations of private functions
 *******************************************************************************/
 
+static int
+rtcore_send(const char *p_string);
+
+static int
+rtcore_receive(char *p_string);
+
+static bool
+rtcore_ping(void);
 
 /*******************************************************************************
 * Global variables
@@ -43,12 +51,11 @@
 // Termination state flag
 volatile sig_atomic_t gb_is_termination_requested = false;
 
-// File descriptors
-int g_fd_socket = -1;
-int g_fd_epoll = -1;
-int g_fd_i2c = -1;
+int g_fd_socket = -1;       // Socket file descriptor
+int g_fd_epoll = -1;        // Epoll file descriptor
+int g_fd_i2c = -1;          // I2C interface file descriptor
 
-u8x8_t g_u8x8;                                  // OLED device descriptor
+u8x8_t g_u8x8;              // OLED device descriptor
 
 /*******************************************************************************
 * Main program entry
@@ -72,6 +79,17 @@ main(void)
     {
         // Failed to initialize peripherals
         gb_is_termination_requested = true;
+    }
+
+    // Check that RTCore companion app is running
+    if (!gb_is_termination_requested)
+    {
+        if (!rtcore_ping())
+        {
+            // RTCore app didn't respond to PING request
+            gb_is_termination_requested = true;
+            Log_Debug("RTCore App is not running or is unresponsive.\n");
+        }
     }
 
     // Main program loop
@@ -133,24 +151,15 @@ handle_button2_press(void)
 }
 
 void
-handle_sample_request(void)
+handle_request_data(void)
 {
-    static int iter = 0;
+    // Request data from RTCore app
+    Log_Debug("Requesting data from RTCore\n");
+    (void)rtcore_send(RTCORE_MSG_REQUEST_DATA);
 
-    // Send "Read-ADC-%d" message to real-time capable application.
-    static char buf_tx[32];
+    // Request data from MLX90614
 
-    sprintf(buf_tx, "Read-ADC-%d", iter++);
-    Log_Debug("Sending: %s\n", buf_tx);
-
-    int bytesSent = send(g_fd_socket, buf_tx, strlen(buf_tx), 0);
-    if (bytesSent == -1)
-    {
-        Log_Debug("ERROR: Unable to send message: %d (%s)\n", 
-            errno, strerror(errno));
-        gb_is_termination_requested = true;
-        return;
-    }
+    return;
 }
 
 void
@@ -165,16 +174,7 @@ handle_rtcore_receive(void)
         uint8_t u8[4];
     } analog_data;
 
-    int bytesReceived = recv(g_fd_socket, buf_rx, sizeof(buf_rx), 0);
-
-    if (bytesReceived == -1)
-    {
-        Log_Debug("ERROR: Unable to receive message: %d (%s)\n",
-            errno, strerror(errno));
-        gb_is_termination_requested = true;
-    }
-
-    Log_Debug("Received %d bytes.\n", bytesReceived);
+    (void)rtcore_receive(buf_rx);
 
     // Copy data from Rx buffer to analog_data union
     for (int i = 0; i < sizeof(analog_data); i++)
@@ -195,9 +195,54 @@ handle_rtcore_receive(void)
 * Private function definitions
 *******************************************************************************/
 
+static int
+rtcore_send(const char *p_string)
+{
+    int bytes_sent = send(g_fd_socket, p_string, strlen(p_string), 0);
+    if (bytes_sent == -1)
+    {
+        Log_Debug("ERROR: Unable to send message: %d (%s)\n",
+            errno, strerror(errno));
+        gb_is_termination_requested = true;
+    }
 
+    return bytes_sent;
+}
 
+static int
+rtcore_receive(char *p_string)
+{
+    int bytes_received = recv(g_fd_socket, p_string, sizeof(p_string), 0);
 
+    if (bytes_received == -1)
+    {
+        Log_Debug("ERROR: Unable to receive message: %d (%s)\n",
+            errno, strerror(errno));
+        gb_is_termination_requested = true;
+    }
+
+    return bytes_received;
+}
+
+static bool
+rtcore_ping(void)
+{
+    char buf_rx[32];
+    bool b_result = false;
+
+    // Request PING from RTCore app
+    if (rtcore_send(RTCORE_MSG_REQUEST_PING) != -1)
+    {
+        // Check for PING reply
+        if ((rtcore_receive(buf_rx) != -1) && 
+            (strcmp(buf_rx, RTCORE_MSG_REPLY_PING) == 0))
+        {
+            b_result = true;
+        }
+    }
+
+    return b_result;
+}
 
 
 

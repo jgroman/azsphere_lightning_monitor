@@ -64,8 +64,8 @@ event_handler_timer_sample(EventData *event_data)
 
     if (b_is_all_ok)
     {
-        // Send measurement sample requests to all data sources
-        handle_sample_request();
+        // Request measurement data from all sources
+        handle_request_data();
     }
 
     return;
