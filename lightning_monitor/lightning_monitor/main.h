@@ -45,9 +45,6 @@ extern "C" {
 // OLED support library
 #include "lib_u8g2.h"
 
-// MLX90614 support library
-#include "lib_mlx90614.h"
-
 /*******************************************************************************
 *   Macros and #define Constants
 *******************************************************************************/
