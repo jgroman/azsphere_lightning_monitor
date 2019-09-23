@@ -27,13 +27,12 @@ extern EventData g_event_data_poll_sample;
 extern EventData g_event_data_socket;
 extern EventData g_event_data_button;
 
-
 /*******************************************************************************
 *   Function Declarations
 *******************************************************************************/
 
-/** @brief Timer event handler for polling RTCore
- *
+/**
+ * @brief Timer event handler for polling RTCore
  */
 void
 event_handler_timer_sample(EventData *event_data);
@@ -44,8 +43,9 @@ event_handler_timer_sample(EventData *event_data);
 void
 event_handler_timer_button(EventData *event_data);
 
-/** @brief Handle socket event by reading incoming data from real-time capable application.
- *
+/**
+ * @brief Handle socket event by reading incoming data from real-time 
+ * capable application.
  */
 void
 event_handler_socket(EventData *eventData);

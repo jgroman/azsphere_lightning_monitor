@@ -12,6 +12,7 @@
 // Using a single-thread event loop pattern based on Epoll and timerfd
 #include "epoll_timerfd_utilities.h"
 
+#include "support.h"
 #include "main.h"
 #include "event_handler.h"
 
@@ -91,8 +92,8 @@ event_handler_timer_button(EventData *event_data)
         // Check for a button1 press
         if (GPIO_GetValue(g_fd_gpio_button1, &state_button1_current) != 0)
         {
-            Log_Debug("ERROR: Could not read button GPIO: %s (%d).\n",
-                strerror(errno), errno);
+            DEBUG("ERROR: Could not read button GPIO: %s (%d).\n",
+                __FUNCTION__, strerror(errno), errno);
             gb_is_termination_requested = true;
             b_is_all_ok = false;
         }
@@ -111,8 +112,8 @@ event_handler_timer_button(EventData *event_data)
         // Check for a button2 press
         if (GPIO_GetValue(g_fd_gpio_button2, &state_button2_current) != 0)
         {
-            Log_Debug("ERROR: Could not read button GPIO: %s (%d).\n",
-                strerror(errno), errno);
+            DEBUG("ERROR: Could not read button GPIO: %s (%d).\n",
+                __FUNCTION__, strerror(errno), errno);
             gb_is_termination_requested = true;
             b_is_all_ok = false;
         }

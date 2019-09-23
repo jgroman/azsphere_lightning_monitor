@@ -1,5 +1,5 @@
 /***************************************************************************//**
-* @file    init.h
+* @file    support.h
 * @version 1.0.0
 * @authors Jaroslav Groman
 *
@@ -25,8 +25,8 @@
 *
 *******************************************************************************/
 
-#ifndef INIT_H
-#define INIT_H
+#ifndef SUPPORT_H
+#define SUPPORT_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,61 +36,62 @@ extern "C" {
 *   Included Headers
 *******************************************************************************/
 
-// Import project hardware abstraction from project property 
-// "Target Hardware Definition Directory"
-#include <hw/project_hardware.h>
-
-#include <applibs/i2c.h>
-
-#include "main.h"
+//#include "main.h"
 
 /*******************************************************************************
 *   Macros and #define Constants
 *******************************************************************************/
 
-#define I2C_ISU             PROJECT_ISU2_I2C
-#define I2C_BUS_SPEED       I2C_BUS_SPEED_STANDARD
-#define I2C_TIMEOUT_MS      (100u)
+// Uncomment directive below to allow debug messages output
+#define APP_DEBUG
 
-#define I2C_ADDR_OLED       (0x3C)
+
+#ifdef APP_DEBUG
+#define DEBUG(s, f, ...) log_printf("%s %s: " s "\n", "App", f, ## __VA_ARGS__)
+#define DEBUG_DEV(s, f, d, ...) log_printf("%s %s (0x%02X): " s "\n", "MLX", f,\
+                                            d->i2c_addr, ## __VA_ARGS__)
+#else
+#define DEBUG(s, f, ...)
+#define DEBUG_DEV(s, f, d, ...)
+#endif // APP_DEBUG
+
+#define ERROR(s, f, ...) log_printf("%s %s: " s "\n", "App", f, \
+                                    ## __VA_ARGS__)
 
 /*******************************************************************************
 *   Global Variables and Constant Declarations with Applicable Initializations
 *******************************************************************************/
 
+
 /*******************************************************************************
 *   Function Declarations
 *******************************************************************************/
 
-/** @brief Initialize signal handlers.
-*
-* Set up SIGTERM termination handler.
-*
-* @return 0 on success, -1 otherwise.
-*/
+/**
+ * @brief Platform dependent log print function.
+ *
+ * @param p_format The message string to log.
+ * @param ... Argument list.
+ *
+ * @result 0 for success, or -1 for failure, in which case errno is set
+ * to the error value.
+ */
 int
-init_handlers(void);
-
-/** @brief Initialize peripherals.
-*
-* Initialize all peripherals used by this project.
-*
-* @return 0 on success, -1 otherwise.
-*/
-int
-init_peripherals(void);
+log_printf(const char *p_format, ...);
 
 /**
+ * @brief Close file descriptor.
  *
+ * @param fd File descriptor.
+ * @param p_fd_name File descriptor name.
  */
 void
-init_shutdown(void);
-
+fd_close(int fd, const char *p_fd_name);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // INIT_H
+#endif  // SUPPORT_H
 
 /* [] END OF FILE */

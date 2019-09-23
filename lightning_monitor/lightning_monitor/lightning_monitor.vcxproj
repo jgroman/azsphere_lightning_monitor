@@ -46,6 +46,7 @@
     <ClCompile Include="event_handler.c" />
     <ClCompile Include="init.c" />
     <ClCompile Include="main.c" />
+    <ClCompile Include="support.c" />
     <UpToDateCheckInput Include="app_manifest.json" />
   </ItemGroup>
   <ItemGroup>
@@ -53,6 +54,7 @@
     <ClInclude Include="event_handler.h" />
     <ClInclude Include="init.h" />
     <ClInclude Include="main.h" />
+    <ClInclude Include="support.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\azsphere_lib_mlx90614\lib_mlx90614\lib_mlx90614.vcxproj">

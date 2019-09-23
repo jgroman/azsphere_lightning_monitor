@@ -23,6 +23,7 @@
 #include <applibs/application.h>
 
 #include "init.h"
+#include "support.h"
 #include "main.h"
 
 /*******************************************************************************
@@ -58,14 +59,18 @@ int g_fd_i2c = -1;          // I2C interface file descriptor
 u8x8_t g_u8x8;              // OLED device descriptor
 
 /*******************************************************************************
+* Public function definitions
+*******************************************************************************/
+
+/*******************************************************************************
 * Main program entry
 *******************************************************************************/
 int 
-main(void)
+main(int argc, char *argv[])
 {
     char oled_buffer[OLED_LINE_LENGTH + 1];
 
-    Log_Debug("\n*** App starting ***\n");
+    DEBUG("*** App starting ***\n", __FUNCTION__);
 
     // Initialize handlers
     if (init_handlers() != 0)
@@ -88,14 +93,13 @@ main(void)
         {
             // RTCore app didn't respond to PING request
             gb_is_termination_requested = true;
-            Log_Debug("RTCore App is not ready.\n");
+            ERROR("RTCore App is not ready.\n", __FUNCTION__);
         }
     }
 
-    // Main program loop
+    // Main program
     if (!gb_is_termination_requested)
     {
-
         // Initialize OLED display
         u8x8_InitDisplay(&g_u8x8);
         u8x8_SetPowerSave(&g_u8x8, 0);
@@ -106,7 +110,7 @@ main(void)
         u8x8_DrawString(&g_u8x8, 0, 0, oled_buffer);
 
 
-        Log_Debug("Waiting for events.\n");
+        DEBUG("Waiting for events.\n", __FUNCTION__);
 
         // Main program loop
         while (!gb_is_termination_requested)
@@ -118,12 +122,12 @@ main(void)
                 gb_is_termination_requested = true;
             }
         }
-        Log_Debug("Exiting main loop.\n");
+        DEBUG("Exiting main loop.\n", __FUNCTION__);
+        u8x8_ClearDisplay(&g_u8x8);
     }
 
     // Clean up and shutdown
-    Log_Debug("Shutting down.\n\n");
-    u8x8_ClearDisplay(&g_u8x8);
+    DEBUG("Shutting down.\n\n", __FUNCTION__);
     init_shutdown();
 }
 /*******************************************************************************
@@ -139,14 +143,14 @@ handle_termination(int signal_number)
 void
 handle_button1_press(void)
 {
-    Log_Debug("Button1 pressed.\n");
+    DEBUG("Button1 pressed.\n", __FUNCTION__);
     gb_is_termination_requested = true;
 }
 
 void
 handle_button2_press(void)
 {
-    Log_Debug("Button2 pressed.\n");
+    DEBUG("Button2 pressed.\n", __FUNCTION__);
     gb_is_termination_requested = true;
 }
 
@@ -154,7 +158,7 @@ void
 handle_request_data(void)
 {
     // Request data from RTCore app
-    Log_Debug("Requesting data from RTCore\n");
+    DEBUG("Requesting data from RTCore\n", __FUNCTION__);
     (void)rtcore_send(RTCORE_MSG_REQUEST_DATA, strlen(RTCORE_MSG_REQUEST_DATA));
 
     // Request data from MLX90614
@@ -201,8 +205,8 @@ rtcore_send(const uint8_t *p_buffer, size_t byte_count)
     int bytes_sent = send(g_fd_socket, p_buffer, byte_count, 0);
     if (bytes_sent == -1)
     {
-        Log_Debug("ERROR: Unable to send message: %d (%s)\n",
-            errno, strerror(errno));
+        DEBUG("ERROR: Unable to send message: %s (%d)\n",
+            __FUNCTION__, strerror(errno), errno);
         gb_is_termination_requested = true;
     }
 
@@ -215,8 +219,8 @@ rtcore_receive(uint8_t *p_buffer, size_t byte_count)
     int bytes_received = recv(g_fd_socket, p_buffer, byte_count, 0);
     if (bytes_received == -1)
     {
-        Log_Debug("ERROR: Unable to receive message: %d (%s)\n",
-            errno, strerror(errno));
+        DEBUG("ERROR: Unable to receive message: %s (%d)\n",
+            __FUNCTION__, strerror(errno), errno);
         gb_is_termination_requested = true;
     }
 

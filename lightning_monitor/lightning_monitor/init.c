@@ -14,6 +14,7 @@
 #include "lib_u8g2.h"
 
 #include "event_handler.h"
+#include "support.h"
 #include "init.h"
 
 int
@@ -28,15 +29,20 @@ init_handlers(void)
     result = sigaction(SIGTERM, &action, NULL);
     if (result != 0)
     {
-        Log_Debug("ERROR: %s - sigaction: errno=%d (%s)\n",
-            __FUNCTION__, errno, strerror(errno));
+        // Failed to set signal action
+        ERROR("ERROR: Unable to set sigaction: %s (%d)\n",
+            __FUNCTION__, strerror(errno), errno);
     }
 
     // Epoll handler
     if (result != -1)
     {
         g_fd_epoll = CreateEpollFd();
-        if (g_fd_epoll < 0) {
+        if (g_fd_epoll < 0) 
+        {
+            // Failed to create epoll
+            ERROR("ERROR: Unable to create epoll: %s (%d)\n",
+                __FUNCTION__, strerror(errno), errno);
             result = -1;
         }
     }
@@ -45,9 +51,11 @@ init_handlers(void)
     g_fd_socket = Application_Socket(PARTNER_RTCORE_COMPONENT_ID);
     if (g_fd_socket == -1)
     {
-        Log_Debug("ERROR: Unable to create socket: %d (%s)\n",
-            errno, strerror(errno));
-        Log_Debug("Real Time Core disabled or Component Id is not correct.\n");
+        // Failed to create socket
+        ERROR("ERROR: Unable to create socket: %s (%d)",
+            __FUNCTION__, strerror(errno), errno);
+        ERROR("RTCore App is not loaded or its component Id is not correct.\n",
+            __FUNCTION__);
         result = -1;
     }
     else
@@ -61,8 +69,9 @@ init_handlers(void)
             &SOCKET_RECEIVE_TIMEOUT, sizeof(SOCKET_RECEIVE_TIMEOUT));
         if (result == -1)
         {
-            Log_Debug("ERROR: Unable to set socket timeout: %d (%s)\n",
-                errno, strerror(errno));
+            // Failed to set socket timeout
+            ERROR("ERROR: Unable to set socket timeout: %s (%d)\n",
+                __FUNCTION__, strerror(errno), errno);
         }
     }
 
@@ -72,13 +81,14 @@ init_handlers(void)
         if (RegisterEventHandlerToEpoll(g_fd_epoll, g_fd_socket,
             &g_event_data_socket, EPOLLIN) != 0)
         {
-            Log_Debug("ERROR: Cannot register receive event handler: %d (%s)\n",
-                errno, strerror(errno));
+            // Failed to register socket event handler
+            ERROR("ERROR: Cannot register socket event handler: %s (%d)\n",
+                __FUNCTION__, strerror(errno), errno);
             result = -1;
         }
     }
 
-    // Create timer for sample poll
+    // Create timer for data request poll
     if (result != -1)
     {
         static const struct timespec SAMPLE_REQUEST_PERIOD = { 4, 0 };
@@ -87,8 +97,9 @@ init_handlers(void)
             &SAMPLE_REQUEST_PERIOD, &g_event_data_poll_sample, EPOLLIN);
         if (g_fd_poll_timer_sample < 0)
         {
-            Log_Debug("ERROR: Could not create sample poll timer: %s (%d).\n",
-                strerror(errno), errno);
+            // Failed to create data request poll timer
+            ERROR("ERROR: Could not create poll timer: %s (%d).\n",
+                __FUNCTION__, strerror(errno), errno);
             result = -1;
         }
     }
@@ -102,25 +113,28 @@ init_peripherals(void)
     int result = -1;
 
     // Initialize I2C
-    Log_Debug("Init I2C\n");
+    DEBUG("Init I2C\n", __FUNCTION__);
     g_fd_i2c = I2CMaster_Open(I2C_ISU);
-    if (g_fd_i2c < 0) {
-        Log_Debug("ERROR: I2CMaster_Open: errno=%d (%s)\n",
-            errno, strerror(errno));
+    if (g_fd_i2c < 0) 
+    {
+        ERROR("ERROR: I2CMaster_Open: %s (%d)\n",
+            __FUNCTION__, strerror(errno), errno);
     }
     else
     {
         result = I2CMaster_SetBusSpeed(g_fd_i2c, I2C_BUS_SPEED);
-        if (result != 0) {
-            Log_Debug("ERROR: I2CMaster_SetBusSpeed: errno=%d (%s)\n",
-                errno, strerror(errno));
+        if (result != 0) 
+        {
+            ERROR("ERROR: I2CMaster_SetBusSpeed: %s (%d)\n",
+                __FUNCTION__, strerror(errno), errno);
         }
         else
         {
             result = I2CMaster_SetTimeout(g_fd_i2c, I2C_TIMEOUT_MS);
-            if (result != 0) {
-                Log_Debug("ERROR: I2CMaster_SetTimeout: errno=%d (%s)\n",
-                    errno, strerror(errno));
+            if (result != 0) 
+            {
+                ERROR("ERROR: I2CMaster_SetTimeout: %s (%d)\n",
+                    __FUNCTION__, strerror(errno), errno);
             }
         }
     }
@@ -128,7 +142,7 @@ init_peripherals(void)
     // Initialize 128x64 SSD1306 OLED
     if (result != -1)
     {
-        Log_Debug("Initializig OLED display.\n");
+        DEBUG("Initializing OLED display.\n", __FUNCTION__);
         // Set u8x8 display type and callbacks
         u8x8_Setup(&g_u8x8, u8x8_d_ssd1306_128x64_noname, u8x8_cad_ssd13xx_i2c,
             u8x8_byte_i2c, lib_u8g2_custom_cb);
@@ -141,11 +155,12 @@ init_peripherals(void)
     // -- Open button1 GPIO as input
     if (result != -1)
     {
-        Log_Debug("Opening PROJECT_BUTTON_1 as input.\n");
+        DEBUG("Opening PROJECT_BUTTON_1 as input.\n", __FUNCTION__);
         g_fd_gpio_button1 = GPIO_OpenAsInput(PROJECT_BUTTON_1);
         if (g_fd_gpio_button1 < 0) {
-            Log_Debug("ERROR: Could not open button GPIO: %s (%d).\n",
-                strerror(errno), errno);
+            // Failed to open button1 GPIO
+            ERROR("ERROR: Could not open button GPIO: %s (%d).\n",
+                __FUNCTION__, strerror(errno), errno);
             result = -1;
         }
     }
@@ -153,11 +168,12 @@ init_peripherals(void)
     // -- Open button2 GPIO as input
     if (result != -1)
     {
-        Log_Debug("Opening PROJECT_BUTTON_2 as input.\n");
+        DEBUG("Opening PROJECT_BUTTON_2 as input.\n", __FUNCTION__);
         g_fd_gpio_button2 = GPIO_OpenAsInput(PROJECT_BUTTON_2);
         if (g_fd_gpio_button2 < 0) {
-            Log_Debug("ERROR: Could not open button GPIO: %s (%d).\n",
-                strerror(errno), errno);
+            // Failed to open button2 GPIO
+            ERROR("ERROR: Could not open button GPIO: %s (%d).\n",
+                __FUNCTION__, strerror(errno), errno);
             result = -1;
         }
     }
@@ -165,18 +181,18 @@ init_peripherals(void)
     // Create timer for button press check
     if (result != -1)
     {
-        struct timespec button_press_check_period = { 0, 1000000 };
+        const struct timespec PERIOD_BTN_PRESS_POLL = { 0, 1000000 };
 
         g_fd_poll_timer_button = CreateTimerFdAndAddToEpoll(g_fd_epoll,
-            &button_press_check_period, &g_event_data_button, EPOLLIN);
+            &PERIOD_BTN_PRESS_POLL, &g_event_data_button, EPOLLIN);
         if (g_fd_poll_timer_button < 0)
         {
-            Log_Debug("ERROR: Could not create button poll timer: %s (%d).\n",
-                strerror(errno), errno);
+            // Failed to create button poll timer
+            ERROR("ERROR: Could not create button poll timer: %s (%d).\n",
+                __FUNCTION__, strerror(errno), errno);
             result = -1;
         }
     }
-
 
     return result;
 }
@@ -185,13 +201,13 @@ void
 init_shutdown(void)
 {
     // Close Epoll fd
-    CloseFdAndPrintError(g_fd_epoll, "Epoll");
+    fd_close(g_fd_epoll, "Epoll");
 
     // Close I2C
-    CloseFdAndPrintError(g_fd_i2c, "I2C");
+    fd_close(g_fd_i2c, "I2C");
 
     // Close button1 GPIO fd
-    CloseFdAndPrintError(g_fd_gpio_button1, "Button1 GPIO");
+    fd_close(g_fd_gpio_button1, "Button1 GPIO");
 }
 
 /* [] END OF FILE */
