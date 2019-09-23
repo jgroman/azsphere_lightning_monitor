@@ -1,3 +1,6 @@
 [submodule "lib_u8g2"]
 	path = lib_u8g2
 	url = https://github.com/jgroman/azsphere_lib_u8g2
+[submodule "lib_mlx90614"]
+	path = lib_mlx90614
+	url = https://github.com/jgroman/azsphere_lib_mlx90614
