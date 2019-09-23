@@ -55,6 +55,9 @@
     <ClInclude Include="main.h" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\..\azsphere_lib_mlx90614\lib_mlx90614\lib_mlx90614.vcxproj">
+      <Project>{f67ab3f8-c86a-49d4-b938-e513824a7c72}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\..\lib_u8g2\lib_u8g2\lib_u8g2.vcxproj">
       <Project>{10f4b2dd-b608-4b0b-bf95-08214f5695a4}</Project>
     </ProjectReference>
