@@ -56,11 +56,8 @@ extern "C" {
 // Project Properties - Debugging - Partner Components
 #define PARTNER_RTCORE_COMPONENT_ID "ac067706-9bda-425a-a766-a91a2c4e32c0"
 
-#define RTCORE_MSG_REQUEST_PING     "ping"
-#define RTCORE_MSG_REPLY_PING       "pong"
-
-#define RTCORE_MSG_REQUEST_DATA     "reqd"
-#define RTCORE_MSG_REPLY_DATA       "drpl"
+#define RTCORE_MSG_PING             'P'
+#define RTCORE_MSG_DATA_REQUEST     'D'
 
 /*******************************************************************************
 *   Function Declarations

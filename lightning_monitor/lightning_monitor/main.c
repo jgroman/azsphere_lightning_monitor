@@ -164,9 +164,11 @@ handle_button2_press(void)
 void
 handle_request_data(void)
 {
+    uint8_t byte = RTCORE_MSG_DATA_REQUEST;
+    
     // Request data from RTCore app
     DEBUG("Requesting data from RTCore\n", __FUNCTION__);
-    (void)rtcore_send(RTCORE_MSG_REQUEST_DATA, strlen(RTCORE_MSG_REQUEST_DATA));
+    (void)rtcore_send(&byte, 1);
 
     // Request data from MLX90614
 
@@ -238,20 +240,18 @@ static bool
 rtcore_ping(void)
 {
     uint8_t buf[32];
-    uint32_t buf_len;
     bool b_result = false;
 
-    strcpy(buf, RTCORE_MSG_REQUEST_PING);
-    buf_len = strlen(RTCORE_MSG_REQUEST_PING) + 1;
+    buf[0] = RTCORE_MSG_PING;
 
     // Request PING from RTCore app
-    if (rtcore_send(buf, buf_len) != -1)
+    if (rtcore_send(buf, 1) != -1)
     {
         // Check for PING reply
         int bytes_received = rtcore_receive(buf, 32);
         if (bytes_received != -1)
         {
-            if (strncmp(buf, RTCORE_MSG_REPLY_PING, (size_t)bytes_received) == 0)
+            if (buf[0] == RTCORE_MSG_PING)
             {
                 // Received correct PING reply
                 b_result = true;
