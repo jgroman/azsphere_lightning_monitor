@@ -143,12 +143,17 @@ init_peripherals(void)
     if (result != -1)
     {
         DEBUG("Initializing OLED display.\n", __FUNCTION__);
-        // Set u8x8 display type and callbacks
-        u8x8_Setup(&g_u8x8, u8x8_d_ssd1306_128x64_noname, u8x8_cad_ssd13xx_i2c,
+        
+        // Set lib_u8g2 I2C interface file descriptor and device address
+        lib_u8g2_set_i2c(g_fd_i2c, I2C_ADDR_OLED);
+
+        // Set display type and callbacks
+        u8g2_Setup_ssd1306_i2c_128x64_noname_f(&g_u8g2, U8G2_R0, 
             lib_u8g2_byte_i2c, lib_u8g2_custom_cb);
-        // Set u8x8 I2C address
-        u8x8_SetI2CAddress(&g_u8x8, I2C_ADDR_OLED);
-        lib_u8g2_set_fd_i2c(g_fd_i2c);
+
+        u8g2_InitDisplay(&g_u8g2);
+
+        u8g2_SetPowerSave(&g_u8g2, 0); // Wake up display
     }
 
     // Initialize development kit button GPIO

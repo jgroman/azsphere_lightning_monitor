@@ -30,8 +30,6 @@
 *   Macros and #define Constants
 *******************************************************************************/
 
-#define OLED_LINE_LENGTH    (16u)
-
 /*******************************************************************************
 * Forward declarations of private functions
 *******************************************************************************/
@@ -45,6 +43,10 @@ rtcore_receive(uint8_t *p_buffer, size_t byte_count);
 static bool
 rtcore_ping(void);
 
+static void
+display_screen(uint8_t id_screen);
+
+
 /*******************************************************************************
 * Global variables
 *******************************************************************************/
@@ -56,7 +58,9 @@ int g_fd_socket = -1;       // Socket file descriptor
 int g_fd_epoll = -1;        // Epoll file descriptor
 int g_fd_i2c = -1;          // I2C interface file descriptor
 
-u8x8_t g_u8x8;              // OLED device descriptor
+u8g2_t g_u8g2;
+
+uint8_t g_screen_id = 1;
 
 /*******************************************************************************
 * Public function definitions
@@ -68,8 +72,6 @@ u8x8_t g_u8x8;              // OLED device descriptor
 int 
 main(int argc, char *argv[])
 {
-    char oled_buffer[OLED_LINE_LENGTH + 1];
-
     DEBUG("*** App starting ***\n", __FUNCTION__);
 
     // Initialize handlers
@@ -100,21 +102,15 @@ main(int argc, char *argv[])
     // Main program
     if (!gb_is_termination_requested)
     {
-        // Initialize OLED display
-        u8x8_InitDisplay(&g_u8x8);
-        u8x8_SetPowerSave(&g_u8x8, 0);
-        u8x8_SetFont(&g_u8x8, u8x8_font_amstrad_cpc_extended_f);
-        u8x8_ClearDisplay(&g_u8x8);
-
-        snprintf(oled_buffer, 16, ".. STARTING ..");
-        u8x8_DrawString(&g_u8x8, 0, 0, oled_buffer);
-
+        u8g2_ClearDisplay(&g_u8g2);
 
         DEBUG("Waiting for events.\n", __FUNCTION__);
 
         // Main program loop
         while (!gb_is_termination_requested)
         {
+            display_screen(g_screen_id);
+
             // Handle timers
             if (WaitForEventAndCallHandler(g_fd_epoll) != 0)
             {
@@ -123,7 +119,8 @@ main(int argc, char *argv[])
             }
         }
         DEBUG("Exiting main loop.\n", __FUNCTION__);
-        u8x8_ClearDisplay(&g_u8x8);
+
+        u8g2_ClearDisplay(&g_u8g2);
     }
 
     // Clean up and shutdown
@@ -144,7 +141,17 @@ void
 handle_button1_press(void)
 {
     DEBUG("Button1 pressed.\n", __FUNCTION__);
-    gb_is_termination_requested = true;
+
+    if (g_screen_id == 1)
+    {
+        g_screen_id = 2;
+    }
+    else
+    {
+        g_screen_id = 1;
+    }
+
+    return;
 }
 
 void
@@ -253,6 +260,35 @@ rtcore_ping(void)
     }
 
     return b_result;
+}
+
+static void
+display_screen(uint8_t id_screen)
+{
+    char line_buffer[32];
+
+    u8g2_ClearBuffer(&g_u8g2);
+
+    switch (id_screen)
+    {
+        case 1:
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
+            snprintf(line_buffer, 16, ".. Starting ..");
+            u8g2_DrawStr(&g_u8g2, 0, 10, line_buffer);
+        break;
+
+        case 2:
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
+            snprintf(line_buffer, 16, "Screen 2");
+            u8g2_DrawStr(&g_u8g2, 10, 10, line_buffer);
+        break;
+
+        default:
+        break;
+    }
+
+    u8g2_SendBuffer(&g_u8g2);
+    return;
 }
 
 /* [] END OF FILE */

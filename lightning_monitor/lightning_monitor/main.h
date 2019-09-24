@@ -104,7 +104,7 @@ extern int g_fd_socket;
 extern int g_fd_epoll;
 extern int g_fd_i2c;
 
-extern u8x8_t g_u8x8;                     // OLED device descriptor
+extern u8g2_t g_u8g2;                     // OLED device descriptor for u8g2
 
 
 #ifdef __cplusplus
