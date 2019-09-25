@@ -123,7 +123,7 @@ static detector_data_t g_detector_data;
 static mlx90614_data_t g_mlx90614_data;
 
 // Displayed screen id
-static screen_id_t g_screen_id = SCR_MLX90614;
+static screen_id_t g_screen_id = SCR_MAIN;
 
 /*******************************************************************************
 * Public function definitions
@@ -297,32 +297,6 @@ rtcore_receive(uint8_t *p_buffer, size_t byte_count)
     return bytes_received;
 }
 
-static bool
-rtcore_ping(void)
-{
-    uint8_t buf[32];
-    bool b_result = false;
-
-    buf[0] = RTCORE_MSG_PING;
-
-    // Request PING from RTCore app
-    if (rtcore_send(buf, 1) != -1)
-    {
-        // Check for PING reply
-        int bytes_received = rtcore_receive(buf, 32);
-        if (bytes_received != -1)
-        {
-            if (buf[0] == RTCORE_MSG_PING)
-            {
-                // Received correct PING reply
-                b_result = true;
-            }
-        }
-    }
-
-    return b_result;
-}
-
 static void
 display_screen(screen_id_t scr_id)
 {
@@ -383,11 +357,11 @@ display_screen(screen_id_t scr_id)
 
             snprintf(line_buffer, 32, "T-rem: %.1f degC", 
                 g_mlx90614_data.temperature_remote);
-            u8g2_DrawStr(&g_u8g2, 0, 20, line_buffer);
+            u8g2_DrawStr(&g_u8g2, 0, 22, line_buffer);
 
             snprintf(line_buffer, 32, "T-amb: %.1f degC",
                 g_mlx90614_data.temperature_ambient);
-            u8g2_DrawStr(&g_u8g2, 0, 31, line_buffer);
+            u8g2_DrawStr(&g_u8g2, 0, 34, line_buffer);
 
         break;
 

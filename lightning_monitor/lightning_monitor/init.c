@@ -159,7 +159,7 @@ init_peripherals(void)
     // Initialize MLX90614 sensor
     if (result != -1)
     {
-        DEBUG("Init MLX90614\n", __FUNCTION__);
+        DEBUG("Initializing MLX90614\n", __FUNCTION__);
 
         gp_mlx = mlx90614_open(g_fd_i2c, MLX90614_I2C_ADDRESS);
 
