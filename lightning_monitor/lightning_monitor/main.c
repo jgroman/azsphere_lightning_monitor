@@ -202,6 +202,10 @@ handle_button1_press(void)
         break;
 
         case SCR_TA7642:
+            g_screen_id = SCR_MLX90614;
+        break;
+
+        case SCR_MLX90614:
             g_screen_id = SCR_MAIN;
         break;
 
