@@ -30,6 +30,58 @@
 *   Macros and #define Constants
 *******************************************************************************/
 
+// RTCore message buffer size
+#define RTCORE_MESSAGE_BUFFER_SIZE  (32u)
+
+// RTCore data reply message length
+#define RTCORE_DATA_LENGTH  (16u)
+
+typedef struct
+{
+    // PWM duty control variable. Allowed values: 0 - PWM_DUTY_MAX
+    // PWM duty ratio is directly controlled by changing this value
+    // 1 byte
+    uint8_t pwm_duty_ctrl;
+
+    // Current voltage on TA7642 output
+    // 4 bytes
+    uint32_t ta7642_output;
+
+    // Average voltage on TA7642 output
+    // 4 bytes
+    uint32_t ta7642_output_avg;
+
+    // Impulse detections per second x 32
+    // 2 bytes
+    uint16_t detections_1sec_m32;
+
+    // Current warning level
+    // 2 bytes
+    uint16_t warning_level;
+
+    // Time since the last impulse detection. After one hour with no detection
+    // PWM is recalibrated
+    // 2 bytes
+    uint16_t idle_timer_sec;
+
+} detector_data_t;
+
+typedef struct
+{
+    float temperature_ambient;
+
+    float temperature_remote;
+} mlx90614_data_t;
+
+typedef enum
+{
+    SCR_INTRO,
+    SCR_MAIN,
+    SCR_TA7642,
+    SCR_MLX90614
+} screen_id_t;
+
+
 /*******************************************************************************
 * Forward declarations of private functions
 *******************************************************************************/
@@ -44,8 +96,10 @@ static bool
 rtcore_ping(void);
 
 static void
-display_screen(uint8_t id_screen);
+display_screen(screen_id_t scr_id);
 
+static double
+convert_ta7642_out_to_volts(uint32_t ta7642_output);
 
 /*******************************************************************************
 * Global variables
@@ -58,9 +112,18 @@ int g_fd_socket = -1;       // Socket file descriptor
 int g_fd_epoll = -1;        // Epoll file descriptor
 int g_fd_i2c = -1;          // I2C interface file descriptor
 
-u8g2_t g_u8g2;
+u8g2_t g_u8g2;              // U8g2 library data descriptor
 
-uint8_t g_screen_id = 1;
+mlx90614_t *gp_mlx;         // MLX90614 sensor device descriptor pointer
+
+// TA7642 module data received from RTCore application
+static detector_data_t g_detector_data;
+
+// MLX90614 temperature data
+static mlx90614_data_t g_mlx90614_data;
+
+// Displayed screen id
+static screen_id_t g_screen_id = SCR_MLX90614;
 
 /*******************************************************************************
 * Public function definitions
@@ -88,17 +151,6 @@ main(int argc, char *argv[])
         gb_is_termination_requested = true;
     }
 
-    // Check that RTCore companion app is running
-    if (!gb_is_termination_requested)
-    {
-        if (!rtcore_ping())
-        {
-            // RTCore app didn't respond to PING request
-            gb_is_termination_requested = true;
-            ERROR("RTCore App is not ready.\n", __FUNCTION__);
-        }
-    }
-
     // Main program
     if (!gb_is_termination_requested)
     {
@@ -109,6 +161,7 @@ main(int argc, char *argv[])
         // Main program loop
         while (!gb_is_termination_requested)
         {
+            // Update OLED display contents
             display_screen(g_screen_id);
 
             // Handle timers
@@ -142,13 +195,19 @@ handle_button1_press(void)
 {
     DEBUG("Button1 pressed.\n", __FUNCTION__);
 
-    if (g_screen_id == 1)
+    switch (g_screen_id)
     {
-        g_screen_id = 2;
-    }
-    else
-    {
-        g_screen_id = 1;
+        case SCR_MAIN:
+            g_screen_id = SCR_TA7642;
+        break;
+
+        case SCR_TA7642:
+            g_screen_id = SCR_MAIN;
+        break;
+
+        default:
+            g_screen_id = SCR_MAIN;
+        break;
     }
 
     return;
@@ -164,13 +223,17 @@ handle_button2_press(void)
 void
 handle_request_data(void)
 {
-    uint8_t byte = RTCORE_MSG_DATA_REQUEST;
-    
     // Request data from RTCore app
-    DEBUG("Requesting data from RTCore\n", __FUNCTION__);
+    uint8_t byte = RTCORE_MSG_DATA_REQUEST;
     (void)rtcore_send(&byte, 1);
 
     // Request data from MLX90614
+    g_mlx90614_data.temperature_ambient = 
+        mlx90614_get_temperature_ambient(gp_mlx);
+
+    g_mlx90614_data.temperature_remote = 
+        mlx90614_get_temperature_object1(gp_mlx);
+
 
     return;
 }
@@ -178,27 +241,21 @@ handle_request_data(void)
 void
 handle_rtcore_receive(void)
 {
-    // Read response from real-time capable application.
-    char buf_rx[32];
+    char buf_rx[RTCORE_MESSAGE_BUFFER_SIZE];
 
-    union Analog_data
+    // Read response from RTCore application.
+    int bytes_received = rtcore_receive(buf_rx, RTCORE_MESSAGE_BUFFER_SIZE);
+
+    if (bytes_received > 0)
     {
-        uint32_t u32;
-        uint8_t u8[4];
-    } analog_data;
+        // Received data request reply
+        if (buf_rx[0] == RTCORE_MSG_DATA_REQUEST)
+        {
+            // Copy data from receive buffer to g_detector_data struct
+            memcpy(&g_detector_data, buf_rx + 1, (size_t)(bytes_received - 1));
+        }
 
-    (void)rtcore_receive(buf_rx, 4);
-
-    // Copy data from Rx buffer to analog_data union
-    for (int i = 0; i < sizeof(analog_data); i++)
-    {
-        analog_data.u8[i] = buf_rx[i];
     }
-
-    // Voltage in Volts = 2.5 * adc_reading / 4096
-    double voltage = (2.5 * analog_data.u32) / 4096;
-
-    Log_Debug("Measured voltage: %f V\n", voltage);
 
     return;
 }
@@ -263,24 +320,71 @@ rtcore_ping(void)
 }
 
 static void
-display_screen(uint8_t id_screen)
+display_screen(screen_id_t scr_id)
 {
     char line_buffer[32];
+    detector_data_t *dd = &g_detector_data;
 
     u8g2_ClearBuffer(&g_u8g2);
 
-    switch (id_screen)
+    switch (scr_id)
     {
-        case 1:
+        case SCR_MAIN:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
-            snprintf(line_buffer, 16, ".. Starting ..");
-            u8g2_DrawStr(&g_u8g2, 0, 10, line_buffer);
+
+            snprintf(line_buffer, 32, "    *** MAIN ***");
+            u8g2_DrawStr(&g_u8g2, 0, 8, line_buffer);
+
+            snprintf(line_buffer, 32, "LVL: %d", dd->warning_level);
+            u8g2_DrawStr(&g_u8g2, 0, 20, line_buffer);
+
         break;
 
-        case 2:
+        case SCR_TA7642:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
-            snprintf(line_buffer, 16, "Screen 2");
-            u8g2_DrawStr(&g_u8g2, 10, 10, line_buffer);
+
+            snprintf(line_buffer, 32, "   *** TA7642 ***");
+            u8g2_DrawStr(&g_u8g2, 0, 8, line_buffer);
+
+            if (dd->warning_level == 0)
+            {
+                snprintf(line_buffer, 32, "Calibrating PWM: %d", dd->pwm_duty_ctrl);
+                u8g2_DrawStr(&g_u8g2, 0, 20, line_buffer);
+
+                snprintf(line_buffer, 32, "OUT: %.3f V", convert_ta7642_out_to_volts(dd->ta7642_output));
+                u8g2_DrawStr(&g_u8g2, 0, 31, line_buffer);
+            }
+            else
+            {
+                snprintf(line_buffer, 32, "PWM: %d, LVL: %d", dd->pwm_duty_ctrl, dd->warning_level);
+                u8g2_DrawStr(&g_u8g2, 0, 20, line_buffer);
+
+                snprintf(line_buffer, 32, "AVG: %.3f V", convert_ta7642_out_to_volts(dd->ta7642_output_avg));
+                u8g2_DrawStr(&g_u8g2, 0, 31, line_buffer);
+
+                snprintf(line_buffer, 32, "OUT: %.3f V, CNT: %d", convert_ta7642_out_to_volts(dd->ta7642_output), dd->detections_1sec_m32 / 32);
+                u8g2_DrawStr(&g_u8g2, 0, 41, line_buffer);
+
+                snprintf(line_buffer, 32, "IDL: %d", dd->idle_timer_sec);
+                u8g2_DrawStr(&g_u8g2, 0, 51, line_buffer);
+            }
+
+        break;
+
+        case SCR_MLX90614:
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
+
+            snprintf(line_buffer, 32, " *** MLX90614 ***");
+            u8g2_DrawStr(&g_u8g2, 0, 8, line_buffer);
+
+            snprintf(line_buffer, 32, "T-rem: %.1f degC", 
+                g_mlx90614_data.temperature_remote);
+            u8g2_DrawStr(&g_u8g2, 0, 20, line_buffer);
+
+            snprintf(line_buffer, 32, "T-amb: %.1f degC",
+                g_mlx90614_data.temperature_ambient);
+            u8g2_DrawStr(&g_u8g2, 0, 31, line_buffer);
+
         break;
 
         default:
@@ -289,6 +393,12 @@ display_screen(uint8_t id_screen)
 
     u8g2_SendBuffer(&g_u8g2);
     return;
+}
+
+static double
+convert_ta7642_out_to_volts(uint32_t ta7642_output)
+{
+    return (2.5 * ta7642_output) / 4096;
 }
 
 /* [] END OF FILE */

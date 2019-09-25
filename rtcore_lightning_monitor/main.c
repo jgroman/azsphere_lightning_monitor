@@ -61,11 +61,13 @@ extern uint32_t StackTop;   // &StackTop == end of TCM0
 
 // Maximum useable TA7642 signal amplitude before clipping
 // signal mV = (signal uint32 * 2500) / 0xFFF
+// In case your module output cannot be successfully calibrated, try to slightly
+// lower this value, but ideally this should be as close as possible to 1802.
 #define TA7642_ADC_MAX  1802     // ~ 1.1 V at 2.5V Vref
 
 // The minimum difference between two output measurements to be considered
 // as detected impulse. Setting this affects detector sensitivity - higher
-// value means less sensitivity.
+// value means less sensitivity, but better interference immunity.
 #define TA7642_NOISE_THRSHLD    70
 
 // Detection level thresholds
@@ -78,11 +80,13 @@ extern uint32_t StackTop;   // &StackTop == end of TCM0
 // 40  ~ 500 Hz at 32 kHz timer clock
 // 64  ~ 330 Hz at 32 kHz timer clock
 // 100 ~ 215 Hz at 32 kHz timer clock
+// Try to adjust this value so that calibrated PWM value is approximately 
+// at least one half of this.
 #define PWM_DUTY_MAX   100
 
 // Calculate optimal operational PWM duty cycle from calibrated PWM duty
-// Experiment with this function to find the best detecting experience
-// try also e.g. (pwm_max / 2) or ((pwm_max / 4) * 3)
+// Experiment with this function to find the best detecting experience.
+// Try also e.g. (pwm_max / 2) or ((pwm_max / 4) * 3)
 #define PWM_TUNE_UP(pwm_max) ((pwm_max / 3) * 2)
 
 // String CR + LF.
@@ -97,14 +101,48 @@ extern uint32_t StackTop;   // &StackTop == end of TCM0
 // Uncomment this directive to enable UART debug messages output
 #define DEBUG_ENABLED
 
+// Uncomment this directive to enable intercore messages debug output
+//#define DEBUG_MSG_ENABLED
+
 // Index of first payload byte in incoming intercore message
 #define PAYLOAD_START_IDX   20
 
+// Max buffer size for intercore messages from and to A7 core
 #define MAX_APP_BUFFER_SIZE 256
 
-
+// Intercore message indentifiers. This is the first byte of incoming message.
 #define RTCORE_MSG_PING             'P'
 #define RTCORE_MSG_DATA_REQUEST     'D'
+
+typedef struct
+{
+    // PWM duty control variable. Allowed values: 0 - PWM_DUTY_MAX
+    // PWM duty ratio is directly controlled by changing this value
+    // 1 byte
+    uint8_t pwm_duty_ctrl;
+
+    // Current voltage on TA7642 output
+    // 4 bytes
+    uint32_t ta7642_output;
+
+    // Average voltage on TA7642 output
+    // 4 bytes
+    uint32_t ta7642_output_avg;
+
+    // Impulse detections per second x 32
+    // 2 bytes
+    uint16_t detections_1sec_m32;
+
+    // Current warning level
+    // 2 bytes
+    uint16_t warning_level;
+
+    // Time since the last impulse detection. After one hour with no detection
+    // PWM is recalibrated
+    // 2 bytes
+    uint16_t idle_timer_sec;
+
+} detector_data_t;
 
 /*******************************************************************************
 * Forward declarations of private functions
@@ -145,7 +183,7 @@ handle_irq_pwm_timer(void);
  * the module output pin.
  * The result is stored in global PWM control g_pwm_duty_ctrl.
  */
-static uint32_t
+static void
 calibrate_pwm(void);
 
 /** 
@@ -154,12 +192,21 @@ calibrate_pwm(void);
 static void
 print_bytes(const uint8_t *buf, int start, int end);
 
-static void 
+/**
+ * @brief Print formatted application Component Id.
+ */
+static void
 print_guid(const uint8_t *guid);
 
+/**
+ * @brief Process incoming intercore A7 message.
+ */
 static void
 process_a7_message(void);
 
+/**
+ * @brief Print formatted intercore A7 message.
+ */
 static void
 debug_a7_message(uint8_t *buffer, uint32_t data_length);
 
@@ -200,23 +247,16 @@ static const uintptr_t ExceptionVectorTable[EXCEPTION_COUNT]
             (uintptr_t)default_exception_handler };
 
 
-// PWM duty control variable. Allowed values: 0 - PWM_DUTY_MAX
-// PWM duty ratio is directly controlled by changing this value
-static uint8_t g_pwm_duty_ctrl;
-
 // Intercore shared buffers
 static BufferHeader *gp_outbound, *gp_inbound;
 static uint32_t g_shared_buf_size = 0;
 
+// Application intercore message buffer
 static uint8_t g_msg_buffer[MAX_APP_BUFFER_SIZE];
 static uint32_t g_msg_byte_count;
 
-
-static union Analog_data
-{
-    uint32_t u32;
-    uint8_t u8[4];
-} g_adc_data;
+// Detector values shared using intercore messages
+static detector_data_t g_detector_data;
 
 /*******************************************************************************
 * Application entry point
@@ -225,6 +265,15 @@ static union Analog_data
 static _Noreturn void 
 rtcore_main(void)
 {
+    // Shortcut to g_detector_data
+    detector_data_t *dd = &g_detector_data;
+
+    // Difference between current and previous voltage on TA7642 output
+    // Used to detect impulses over TA7642_NOISE_THRSHLD
+    int32_t output_delta;
+
+    uint16_t level_decay = 0;
+
     // SCB->VTOR = ExceptionVectorTable
     WriteReg32(SCB_BASE, 0x08, (uint32_t)ExceptionVectorTable);
 
@@ -275,56 +324,47 @@ rtcore_main(void)
         // Empty block, waiting for buffers to become available
     }
 
-    // Current voltage on TA7642 output
-    uint32_t ta7642_output;
-
-    // Difference between current and previous voltage on TA7642 output
-    // Used to detect impulses over TA7642_NOISE_THRSHLD
-    int32_t output_delta;
-
-    // Impulse detections per second times 32
-    uint16_t detections_1sec_m32 = 0;
-
-    uint16_t detection_level = 255;
-    
-    uint16_t level_decay = 0;
-    
-    // Time since the last impulse detection. After one hour with no detection
-    // PWM is recalibrated
-    uint16_t idle_timer_sec = 0;
-
     // Calibrate PWM for AGC (Automatic Gain Control)
-    uint32_t ta7642_output_avg;
-    ta7642_output_avg = calibrate_pwm();
+    calibrate_pwm();
+    dd->ta7642_output_avg = dd->ta7642_output;
 
-    // Previous value of free-running GPT2 millisecond timer
+    // Set default detector values
+    dd->detections_1sec_m32 = 0;
+    dd->warning_level = 255;
+    dd->idle_timer_sec = 0;
+
+    // Store value of free-running GPT2 millisecond timer
+    // for measuring integration intervals
     uint32_t last_gpt2_value = Gpt2_GetValue();
 
     for (;;)
 	{
         // Read current TA7642 output voltage
-        ta7642_output = ReadAdc(TA7642_ADC_CH);
-        ta7642_output_avg = ((ta7642_output_avg * 15) + ta7642_output) / 16;
+        dd->ta7642_output = ReadAdc(TA7642_ADC_CH);
+        dd->ta7642_output_avg = 
+            ((dd->ta7642_output_avg * 15) + dd->ta7642_output) / 16;
 
-        output_delta = (int32_t)ta7642_output_avg - (int32_t)ta7642_output;
+        output_delta = (int32_t)dd->ta7642_output_avg - 
+            (int32_t)dd->ta7642_output;
+
         if (output_delta >= TA7642_NOISE_THRSHLD)
         {
 #           ifdef DEBUG_ENABLED
-            //Uart_WriteIntegerPoll(output_delta);
-            //Uart_WriteStringPoll(STRING_CRLF);
+            Uart_WriteIntegerPoll(output_delta);
+            Uart_WriteStringPoll(" ");
 #           endif // DEBUG_ENABLED
 
             // Noise detected, might be lightning
             // Switch App LED on
             Mt3620_Gpio_Write(PROJECT_APP_LED, false);
 
-            // Increase impulse counter
-            detections_1sec_m32 += 32;
-            if (detections_1sec_m32 >= 250)
+            // Increase strike counter
+            dd->detections_1sec_m32 += 32;
+            if (dd->detections_1sec_m32 >= 250)
             {
                 // Clip detections at 8 max, at this count it is probably
                 // just interference instead of lightning
-                detections_1sec_m32 = 250;
+                dd->detections_1sec_m32 = 250;
             }
         }
         else
@@ -336,61 +376,72 @@ rtcore_main(void)
         if (Gpt2_GetValue() - last_gpt2_value >= MS_1_SECOND)
         {
             // One second has passed since the last results update
-            if (detections_1sec_m32 > 32)
+
+#           ifdef DEBUG_ENABLED
+            // output_delta debug output formatting
+            if (dd->detections_1sec_m32 > 0)
             {
-                // If there were at least two impulses, increase level
-                detection_level += detections_1sec_m32;
+                Uart_WriteStringPoll(STRING_CRLF);
+            }
+#           endif // DEBUG_ENABLED
+
+            // If there were at least two impulses, increase warning level
+            if (dd->detections_1sec_m32 > 32)
+            {
+                dd->warning_level += dd->detections_1sec_m32;
             }
 
-            // Detection level decay during time
-            level_decay = (detection_level >> 8);
-            detection_level = detection_level - level_decay;
+            // Warning level decay during time
+            level_decay = (dd->warning_level >> 8);
+            dd->warning_level = dd->warning_level - level_decay;
 
-            if (detection_level > TA7642_LEVEL_THRSHLD_MAX)
+            if (dd->warning_level > TA7642_LEVEL_THRSHLD_MAX)
             {
-                // Clip detection level if over allowed maximum
-                detection_level = TA7642_LEVEL_THRSHLD_MAX;
+                // Clip warning level to allowed maximum
+                dd->warning_level = TA7642_LEVEL_THRSHLD_MAX;
             }
 
             if (level_decay == 0)
             {
-                idle_timer_sec++;
-                if (idle_timer_sec >= S_1_HOUR)
+                dd->idle_timer_sec++;
+
+                if (dd->idle_timer_sec >= S_1_HOUR)
                 {
                     // No detections for one hour, recalibrate PWM.
-                    idle_timer_sec = 0;
-                    calibrate_pwm();
+                    dd->idle_timer_sec = 0;
 #                   ifdef DEBUG_ENABLED
-                    Uart_WriteStringPoll("Recalibrating PWM after 1 hour idle." STRING_CRLF);
+                    Uart_WriteStringPoll("Recalibrating PWM after 1 hour idle." 
+                        STRING_CRLF);
 #                   endif // DEBUG_ENABLED
+                    calibrate_pwm();
                 }
             }
             else
             {
                 // Reset idle timer
-                idle_timer_sec = 0;
+                dd->idle_timer_sec = 0;
             }
 
 #           ifdef DEBUG_ENABLED
             Uart_WriteStringPoll("PWM:");
-            Uart_WriteIntegerPoll(g_pwm_duty_ctrl);
+            Uart_WriteIntegerPoll(dd->pwm_duty_ctrl);
             Uart_WriteStringPoll(" OUT:");
-            Uart_WriteIntegerPoll(ta7642_output);
+            Uart_WriteIntegerPoll(dd->ta7642_output);
             Uart_WriteStringPoll(" AVG:");
-            Uart_WriteIntegerPoll(ta7642_output_avg);
+            Uart_WriteIntegerPoll(dd->ta7642_output_avg);
             Uart_WriteStringPoll(" DLT:");
             Uart_WriteIntegerPoll(output_delta);
             Uart_WriteStringPoll(" CNT:");
-            Uart_WriteIntegerPoll(detections_1sec_m32);
+            Uart_WriteIntegerPoll(dd->detections_1sec_m32);
             Uart_WriteStringPoll(" LVL:");
-            Uart_WriteIntegerPoll(detection_level);
+            Uart_WriteIntegerPoll(dd->warning_level);
             Uart_WriteStringPoll(" DCY:");
             Uart_WriteIntegerPoll(level_decay);
             Uart_WriteStringPoll(STRING_CRLF);
 #           endif // DEBUG_ENABLED
 
             // Reset impulse counter
-            detections_1sec_m32 = 0;
+            dd->detections_1sec_m32 = 0;
 
             // Store current millisecond timer value
             last_gpt2_value = Gpt2_GetValue();
@@ -414,7 +465,7 @@ default_exception_handler(void)
     }
 }
 
-static uint32_t
+static void
 calibrate_pwm(void)
 {
     // Calibrate PWM control value
@@ -422,18 +473,23 @@ calibrate_pwm(void)
     // when TA7642 starts working with full amplification. This is determined
     // by measuring 1.1 V on the module output pin
 
-    uint32_t adc_result;
+    detector_data_t *dd = &g_detector_data;
 
-    g_pwm_duty_ctrl = 0;
-    start_pwm_timer(g_pwm_duty_ctrl);     // PWM pin Switch off
-    Gpt2_WaitMs(250);                     // Wait for full capacitor discharge
+    bool b_state_app_led = false;       // APP LED state flag
+    bool b_is_locked_app_led = false;   // APP LED state mutable flag
 
 #   ifdef DEBUG_ENABLED
     Uart_WriteStringPoll("Calibrating PWM ..." STRING_CRLF);
 #   endif // DEBUG_ENABLED
 
-    bool b_state_app_led = false;
-    bool b_is_locked_app_led = false;
+    // Warning level value 0 is used as a flag that calibration is in progress
+    dd->warning_level = 0;
+    
+    dd->pwm_duty_ctrl = 0;
+    start_pwm_timer(dd->pwm_duty_ctrl);   // PWM pin Switch off
+    Gpt2_WaitMs(250);                     // Wait for full capacitor discharge
+
+    // Switch on App LED
     Mt3620_Gpio_Write(PROJECT_APP_LED, b_state_app_led);
 
     bool b_is_not_calibrated = true;
@@ -443,8 +499,8 @@ calibrate_pwm(void)
         // or PWM duty is on max level
         for (uint8_t pwm_duty = 1; pwm_duty <= PWM_DUTY_MAX; pwm_duty++)
         {
-            g_pwm_duty_ctrl = pwm_duty;      // Update PWM duty ratio
-            Gpt2_WaitMs(250);                // Wait for capacitor charging
+            dd->pwm_duty_ctrl = pwm_duty;  // Update PWM duty ratio
+            Gpt2_WaitMs(250);              // Wait for capacitor charging
 
             // Flip App LED state to indicate progress
             if (!b_is_locked_app_led)
@@ -454,8 +510,8 @@ calibrate_pwm(void)
             }
 
             // Measure TA7642 module output voltage
-            adc_result = ReadAdc(TA7642_ADC_CH);
-            if (adc_result > TA7642_ADC_MAX)
+            dd->ta7642_output = ReadAdc(TA7642_ADC_CH);
+            if (dd->ta7642_output > TA7642_ADC_MAX)
             {
                 // Voltage on TA7642 module output has reached required value
                 // Calibration was successful
@@ -476,7 +532,7 @@ calibrate_pwm(void)
             Mt3620_Gpio_Write(PROJECT_APP_LED, b_state_app_led);
 
 #           ifdef DEBUG_ENABLED
-            Uart_WriteStringPoll("ERROR: No calibration." STRING_CRLF);
+            Uart_WriteStringPoll("ERROR: *** Calibration failed." STRING_CRLF);
 #           endif // DEBUG_ENABLED
         }
 
@@ -488,17 +544,20 @@ calibrate_pwm(void)
 
 #   ifdef DEBUG_ENABLED
     Uart_WriteStringPoll("Calibrated at PWM ");
-    Uart_WriteIntegerPoll(g_pwm_duty_ctrl);
+    Uart_WriteIntegerPoll(dd->pwm_duty_ctrl);
     Uart_WriteStringPoll(STRING_CRLF);
 #   endif // DEBUG_ENABLED
 
     // "Tune up" operational PWM duty to be certain percentage of calibrated 
     // value. See PWM_TUNE_UP macro.
-    g_pwm_duty_ctrl = PWM_TUNE_UP(g_pwm_duty_ctrl);
+    dd->pwm_duty_ctrl = PWM_TUNE_UP(dd->pwm_duty_ctrl);
 
-    Gpt2_WaitMs(500);
+    Gpt2_WaitMs(500);   // Wait for capacitors
 
-    return(adc_result);
+    // Restore default warning level value
+    dd->warning_level = 255;
+
+    return;
 }
 
 static void
@@ -537,7 +596,8 @@ handle_irq_pwm_timer(void)
 
     // Calculate this pulse duration
     uint32_t counter = (b_is_pwm_gpio_high) ?
-        g_pwm_duty_ctrl : PWM_DUTY_MAX - g_pwm_duty_ctrl;
+        g_detector_data.pwm_duty_ctrl : 
+        PWM_DUTY_MAX - g_detector_data.pwm_duty_ctrl;
 
     // Do not change output GPIO state if requested pulse duration is 0
     if (counter > 0)
@@ -581,7 +641,6 @@ print_guid(const uint8_t *guid)
 static void
 process_a7_message(void)
 {
-
     // Read incoming data from A7 Core
     // On success, g_msg_byte_count is set to the number of read bytes.
     int dequeue_result = DequeueData(gp_outbound, gp_inbound,
@@ -591,50 +650,31 @@ process_a7_message(void)
     {
         // Received complete message from A7 Core
 
-#       ifdef DEBUG_ENABLED
+#       ifdef DEBUG_MSG_ENABLED
+        Uart_WriteStringPoll("Incoming ");
         debug_a7_message(g_msg_buffer, g_msg_byte_count);
-#       endif // DEBUG_ENABLED
+#       endif // DEBUG_MSG_ENABLED
 
-        if (g_msg_buffer[PAYLOAD_START_IDX] == RTCORE_MSG_PING)
-        {
-            // Received ping request
-
-            // Leave first payload byte as-is and send message back
-            EnqueueData(gp_inbound, gp_outbound, g_shared_buf_size,
-                g_msg_buffer, PAYLOAD_START_IDX + 1);
-        }
-        else if (g_msg_buffer[PAYLOAD_START_IDX] == RTCORE_MSG_DATA_REQUEST)
+        if (g_msg_buffer[PAYLOAD_START_IDX] == RTCORE_MSG_DATA_REQUEST)
         {
             // Received data request
 
-            // Read ADC channel
-            uint8_t adc_channel = 1;
-            g_adc_data.u32 = ReadAdc(adc_channel);
+            // Leave the first byte of message as-is. This is used for detecting
+            // message type in A7 core
 
-#           ifdef DEBUG_ENABLED
-            uint32_t mV;
-            mV = (g_adc_data.u32 * 2500) / 0xFFF;
-            Uart_WriteStringPoll("ADC channel ");
-            Uart_WriteIntegerPoll(adc_channel);
-            Uart_WriteStringPoll(" : ");
-            Uart_WriteIntegerPoll(mV / 1000);
-            Uart_WriteStringPoll(".");
-            Uart_WriteIntegerWidthPoll(mV % 1000, 3);
-            Uart_WriteStringPoll(" V");
-            Uart_WriteStringPoll(STRING_CRLF);
-#           endif // DEBUG_ENABLED
+            // Copy g_detector_data to message buffer
+            memcpy(g_msg_buffer + PAYLOAD_START_IDX + 1, &g_detector_data, 
+                sizeof(detector_data_t));
 
-            uint8_t analog_buf_idx = 0;
-            for (int buf_idx = 0; buf_idx < 4; buf_idx++)
-            {
-                // Copy ADC data to app buffer
-                g_msg_buffer[PAYLOAD_START_IDX + buf_idx] =
-                    g_adc_data.u8[analog_buf_idx++];
-            }
+#           ifdef DEBUG_MSG_ENABLED
+            Uart_WriteStringPoll("Outgoing ");
+            debug_a7_message(g_msg_buffer, 
+                PAYLOAD_START_IDX + sizeof(detector_data_t) + 1);
+#           endif // DEBUG_MSG_ENABLED
 
-            // Send buffer to A7 Core
+            // Send message buffer to A7 Core
             EnqueueData(gp_inbound, gp_outbound, g_shared_buf_size, g_msg_buffer,
-                PAYLOAD_START_IDX + 4);
+                PAYLOAD_START_IDX + 1 + sizeof(g_detector_data));
         }
     }
 
@@ -645,7 +685,7 @@ static void
 debug_a7_message(uint8_t *buffer, uint32_t data_length)
 {
     // Print incoming message header
-    Uart_WriteStringPoll("Received message of ");
+    Uart_WriteStringPoll("A7 message of ");
     Uart_WriteIntegerPoll(data_length);
     Uart_WriteStringPoll("bytes:" STRING_CRLF);
 

@@ -156,6 +156,25 @@ init_peripherals(void)
         u8g2_SetPowerSave(&g_u8g2, 0); // Wake up display
     }
 
+    // Initialize MLX90614 sensor
+    if (result != -1)
+    {
+        DEBUG("Init MLX90614\n", __FUNCTION__);
+
+        gp_mlx = mlx90614_open(g_fd_i2c, MLX90614_I2C_ADDRESS);
+
+        if (!gp_mlx)
+        {
+            ERROR("ERROR: Could not initialize MLX90614.\n", __FUNCTION__);
+            result = -1;
+        }
+        else
+        {
+            // Set measurement unit to degrees Celsius
+            mlx90614_set_temperature_unit(gp_mlx, MLX_TEMP_CELSIUS);
+        }
+    }
+
     // Initialize development kit button GPIO
     // -- Open button1 GPIO as input
     if (result != -1)
