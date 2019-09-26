@@ -101,6 +101,10 @@ extern int g_fd_socket;
 extern int g_fd_epoll;
 extern int g_fd_i2c;
 
+extern int g_fd_gpio_rgbled_red;    // Red RGB LED GPIO file descriptor
+extern int g_fd_gpio_rgbled_green;  // Green RGB LED GPIO file descriptor
+
+
 extern u8g2_t g_u8g2;           // OLED device descriptor for u8g2
 extern mlx90614_t *gp_mlx;      // MLX90614 sensor device descriptor pointer
 

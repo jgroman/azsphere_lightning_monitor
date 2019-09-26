@@ -175,7 +175,7 @@ init_peripherals(void)
         }
     }
 
-    // Initialize development kit button GPIO
+    // Initialize development kit GPIOs
     // -- Open button1 GPIO as input
     if (result != -1)
     {
@@ -202,7 +202,37 @@ init_peripherals(void)
         }
     }
 
-    // Create timer for button press check
+    // -- Open Red RGB LED GPIO as output
+    if (result != -1)
+    {
+        DEBUG("Opening PROJECT_RGBLED_RED as output.\n", __FUNCTION__);
+        g_fd_gpio_rgbled_red = GPIO_OpenAsOutput(PROJECT_RGBLED_RED, 
+            GPIO_OutputMode_PushPull, GPIO_Value_High);     // LED is Off
+        if (g_fd_gpio_rgbled_red < 0)
+        {
+            // Failed to open Red RGB LED GPIO
+            ERROR("ERROR: Could not open Red RGB LED GPIO: %s (%d).\n",
+                __FUNCTION__, strerror(errno), errno);
+            result = -1;
+        }
+    }
+
+    // -- Open Green RGB LED GPIO as output
+    if (result != -1)
+    {
+        DEBUG("Opening PROJECT_RGBLED_GREEN as output.\n", __FUNCTION__);
+        g_fd_gpio_rgbled_green = GPIO_OpenAsOutput(PROJECT_RGBLED_GREEN,
+            GPIO_OutputMode_PushPull, GPIO_Value_High);     // LED is Off
+        if (g_fd_gpio_rgbled_green < 0)
+        {
+            // Failed to open Green RGB LED GPIO
+            ERROR("ERROR: Could not open Green RGB LED GPIO: %s (%d).\n",
+                __FUNCTION__, strerror(errno), errno);
+            result = -1;
+        }
+    }
+
+    // Create poll timer for button press check
     if (result != -1)
     {
         const struct timespec PERIOD_BTN_PRESS_POLL = { 0, 1000000 };
@@ -230,8 +260,11 @@ init_shutdown(void)
     // Close I2C
     fd_close(g_fd_i2c, "I2C");
 
-    // Close button1 GPIO fd
+    // Close GPIO fds
     fd_close(g_fd_gpio_button1, "Button1 GPIO");
+    fd_close(g_fd_gpio_button2, "Button2 GPIO");
+    fd_close(g_fd_gpio_rgbled_red, "Red RGB LED GPIO");
+    fd_close(g_fd_gpio_rgbled_green, "Green RGB LED GPIO");
 }
 
 /* [] END OF FILE */

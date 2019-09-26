@@ -36,6 +36,11 @@
 // RTCore data reply message length
 #define RTCORE_DATA_LENGTH  (16u)
 
+// Warning levels for RGB LED
+#define WARNING_LEVEL_LOW          (2000u)
+#define WARNING_LEVEL_MIDDLE       (4000u)
+#define WARNING_LEVEL_HIGH         (6000u)
+
 typedef struct
 {
     // PWM duty control variable. Allowed values: 0 - PWM_DUTY_MAX
@@ -92,14 +97,14 @@ rtcore_send(const uint8_t *p_buffer, size_t byte_count);
 static int
 rtcore_receive(uint8_t *p_buffer, size_t byte_count);
 
-static bool
-rtcore_ping(void);
-
 static void
 display_screen(screen_id_t scr_id);
 
 static double
 convert_ta7642_out_to_volts(uint32_t ta7642_output);
+
+static void
+show_level_on_rgb(void);
 
 /*******************************************************************************
 * Global variables
@@ -111,6 +116,9 @@ volatile sig_atomic_t gb_is_termination_requested = false;
 int g_fd_socket = -1;       // Socket file descriptor
 int g_fd_epoll = -1;        // Epoll file descriptor
 int g_fd_i2c = -1;          // I2C interface file descriptor
+
+int g_fd_gpio_rgbled_red = -1;    // Red RGB LED GPIO file descriptor
+int g_fd_gpio_rgbled_green = -1;  // Green RGB LED GPIO file descriptor
 
 u8g2_t g_u8g2;              // U8g2 library data descriptor
 
@@ -164,6 +172,9 @@ main(int argc, char *argv[])
             // Update OLED display contents
             display_screen(g_screen_id);
 
+            // Update RGB LED depending on warning level
+            show_level_on_rgb();
+
             // Handle timers
             if (WaitForEventAndCallHandler(g_fd_epoll) != 0)
             {
@@ -174,6 +185,10 @@ main(int argc, char *argv[])
         DEBUG("Exiting main loop.\n", __FUNCTION__);
 
         u8g2_ClearDisplay(&g_u8g2);
+
+        // Switch off all RGB LEDs
+        GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_High);
+        GPIO_SetValue(g_fd_gpio_rgbled_green, GPIO_Value_High);
     }
 
     // Clean up and shutdown
@@ -310,7 +325,7 @@ display_screen(screen_id_t scr_id)
         case SCR_MAIN:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
 
-            snprintf(line_buffer, 32, "    *** MAIN ***");
+            snprintf(line_buffer, 32, "  * Storm Detector *");
             u8g2_DrawStr(&g_u8g2, 0, 8, line_buffer);
 
             snprintf(line_buffer, 32, "LVL: %d", dd->warning_level);
@@ -377,6 +392,43 @@ static double
 convert_ta7642_out_to_volts(uint32_t ta7642_output)
 {
     return (2.5 * ta7642_output) / 4096;
+}
+
+static void
+show_level_on_rgb(void)
+{
+    const uint16_t HYSTERESIS = 20;
+
+    detector_data_t *dd = &g_detector_data;
+
+    if (dd->warning_level > WARNING_LEVEL_HIGH + HYSTERESIS)
+    {
+        // Red On, Green Off
+        GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_Low);
+        GPIO_SetValue(g_fd_gpio_rgbled_green, GPIO_Value_High);
+    }
+    else if ((dd->warning_level > WARNING_LEVEL_MIDDLE + HYSTERESIS) && 
+        (dd->warning_level < WARNING_LEVEL_HIGH - HYSTERESIS))
+    {
+        // Red On, Green On (= Yellow)
+        GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_Low);
+        GPIO_SetValue(g_fd_gpio_rgbled_green, GPIO_Value_Low);
+    }
+    else if ((dd->warning_level > WARNING_LEVEL_LOW + HYSTERESIS) &&
+        (dd->warning_level < WARNING_LEVEL_MIDDLE - HYSTERESIS))
+    {
+        // Red Off, Green On
+        GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_High);
+        GPIO_SetValue(g_fd_gpio_rgbled_green, GPIO_Value_Low);
+    }
+    else if (dd->warning_level < WARNING_LEVEL_LOW - HYSTERESIS)
+    {
+        // Red Off, Green Off
+        GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_High);
+        GPIO_SetValue(g_fd_gpio_rgbled_green, GPIO_Value_High);
+    }
+
+    return;
 }
 
 /* [] END OF FILE */

@@ -10,7 +10,9 @@
     "AllowedConnections": [],
     "Gpio": [
       "$PROJECT_BUTTON_1",
-      "$PROJECT_BUTTON_2"
+      "$PROJECT_BUTTON_2",
+      "$PROJECT_RGBLED_RED",
+      "$PROJECT_RGBLED_GREEN"
     ],
     "I2cMaster": [
       "$PROJECT_ISU2_I2C"
