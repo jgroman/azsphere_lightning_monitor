@@ -9,6 +9,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lib_u8g2", "..\lib_u8g2\lib
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lib_mlx90614", "..\lib_mlx90614\lib_mlx90614\lib_mlx90614.vcxproj", "{F67AB3F8-C86A-49D4-B938-E513824A7C72}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lib_lps22hh", "..\lib_lps22hh\lib_lps22hh\lib_lps22hh.vcxproj", "{F242A610-13D0-4953-ABBC-C07B145C44A6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM = Debug|ARM
@@ -27,6 +29,10 @@ Global
 		{F67AB3F8-C86A-49D4-B938-E513824A7C72}.Debug|ARM.Build.0 = Debug|ARM
 		{F67AB3F8-C86A-49D4-B938-E513824A7C72}.Release|ARM.ActiveCfg = Release|ARM
 		{F67AB3F8-C86A-49D4-B938-E513824A7C72}.Release|ARM.Build.0 = Release|ARM
+		{F242A610-13D0-4953-ABBC-C07B145C44A6}.Debug|ARM.ActiveCfg = Debug|ARM
+		{F242A610-13D0-4953-ABBC-C07B145C44A6}.Debug|ARM.Build.0 = Debug|ARM
+		{F242A610-13D0-4953-ABBC-C07B145C44A6}.Release|ARM.ActiveCfg = Release|ARM
+		{F242A610-13D0-4953-ABBC-C07B145C44A6}.Release|ARM.Build.0 = Release|ARM
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -48,6 +48,9 @@ extern "C" {
 // MLX90614 support library
 #include "lib_mlx90614.h"
 
+// LPS22HH support library
+#include "lib_lps22hh.h"
+
 /*******************************************************************************
 *   Macros and #define Constants
 *******************************************************************************/

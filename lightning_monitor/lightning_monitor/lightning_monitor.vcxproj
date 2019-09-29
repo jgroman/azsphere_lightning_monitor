@@ -57,6 +57,9 @@
     <ClInclude Include="support.h" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\lib_lps22hh\lib_lps22hh\lib_lps22hh.vcxproj">
+      <Project>{f242a610-13d0-4953-abbc-c07b145c44a6}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\..\lib_mlx90614\lib_mlx90614\lib_mlx90614.vcxproj">
       <Project>{f67ab3f8-c86a-49d4-b938-e513824a7c72}</Project>
     </ProjectReference>
