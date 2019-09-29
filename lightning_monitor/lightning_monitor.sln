@@ -7,7 +7,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lightning_monitor", "lightn
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lib_u8g2", "..\lib_u8g2\lib_u8g2\lib_u8g2.vcxproj", "{10F4B2DD-B608-4B0B-BF95-08214F5695A4}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lib_mlx90614", "..\..\azsphere_lib_mlx90614\lib_mlx90614\lib_mlx90614.vcxproj", "{F67AB3F8-C86A-49D4-B938-E513824A7C72}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lib_mlx90614", "..\lib_mlx90614\lib_mlx90614\lib_mlx90614.vcxproj", "{F67AB3F8-C86A-49D4-B938-E513824A7C72}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
