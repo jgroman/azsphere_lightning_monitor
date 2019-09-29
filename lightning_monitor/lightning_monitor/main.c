@@ -41,6 +41,9 @@
 #define WARNING_LEVEL_MIDDLE       (4000u)
 #define WARNING_LEVEL_HIGH         (6000u)
 
+// Maximum line length on OLED display
+#define MAX_LINE_LEN                (32U)
+
 typedef struct
 {
     // PWM duty control variable. Allowed values: 0 - PWM_DUTY_MAX
@@ -83,9 +86,9 @@ typedef enum
     SCR_INTRO,
     SCR_MAIN,
     SCR_TA7642,
-    SCR_MLX90614
+    SCR_MLX90614,
+    SCR_LPS22HH
 } screen_id_t;
-
 
 /*******************************************************************************
 * Forward declarations of private functions
@@ -120,9 +123,14 @@ int g_fd_i2c = -1;          // I2C interface file descriptor
 int g_fd_gpio_rgbled_red = -1;    // Red RGB LED GPIO file descriptor
 int g_fd_gpio_rgbled_green = -1;  // Green RGB LED GPIO file descriptor
 
-u8g2_t g_u8g2;              // U8g2 library data descriptor
+// U8g2 library data descriptor
+u8g2_t g_u8g2;
 
-mlx90614_t *gp_mlx;         // MLX90614 sensor device descriptor pointer
+// MLX90614 sensor device descriptor pointer
+mlx90614_t *gp_mlx;
+
+// LPS22HH sensor device descriptor pointer
+stmdev_ctx_t *gp_lps22hh_ctx;
 
 // TA7642 module data received from RTCore application
 static detector_data_t g_detector_data;
@@ -132,6 +140,20 @@ static mlx90614_data_t g_mlx90614_data;
 
 // Displayed screen id
 static screen_id_t g_screen_id = SCR_MAIN;
+
+// Display line buffer
+static char g_line_buffer[MAX_LINE_LEN];
+
+// LPS22HH raw pressure data
+// There are only 3 bytes of data but we will cast it to int32_t later
+static uint8_t g_lps_raw_pressure[4];
+
+// LPS22HH calculated pressure value
+static float g_lps_pressure_hpa;
+
+// LPS22HH general register
+static lps22hh_reg_t g_lps_reg;
+
 
 /*******************************************************************************
 * Public function definitions
@@ -221,6 +243,10 @@ handle_button1_press(void)
         break;
 
         case SCR_MLX90614:
+            g_screen_id = SCR_LPS22HH;
+        break;
+
+        case SCR_LPS22HH:
             g_screen_id = SCR_MAIN;
         break;
 
@@ -246,13 +272,25 @@ handle_request_data(void)
     uint8_t byte = RTCORE_MSG_DATA_REQUEST;
     (void)rtcore_send(&byte, 1);
 
-    // Request data from MLX90614
+    // Read data from MLX90614
     g_mlx90614_data.temperature_ambient = 
         mlx90614_get_temperature_ambient(gp_mlx);
 
     g_mlx90614_data.temperature_remote = 
         mlx90614_get_temperature_object1(gp_mlx);
 
+    // Read data from LPS22HH
+    // -- Read LPS22HH status
+    lps22hh_read_reg(gp_lps22hh_ctx, LPS22HH_STATUS, (uint8_t *)&g_lps_reg, 1);
+
+    // -- Check that new pressure data are ready
+    if (g_lps_reg.status.p_da == 1)
+    {
+        lps22hh_pressure_raw_get(gp_lps22hh_ctx, g_lps_raw_pressure);
+        g_lps_raw_pressure[3] = 0;
+        g_lps_pressure_hpa =
+            lps22hh_from_lsb_to_hpa(*(int32_t *)g_lps_raw_pressure);
+    }
 
     return;
 }
@@ -273,7 +311,6 @@ handle_rtcore_receive(void)
             // Copy data from receive buffer to g_detector_data struct
             memcpy(&g_detector_data, buf_rx + 1, (size_t)(bytes_received - 1));
         }
-
     }
 
     return;
@@ -315,7 +352,6 @@ rtcore_receive(uint8_t *p_buffer, size_t byte_count)
 static void
 display_screen(screen_id_t scr_id)
 {
-    char line_buffer[32];
     detector_data_t *dd = &g_detector_data;
 
     u8g2_ClearBuffer(&g_u8g2);
@@ -325,41 +361,44 @@ display_screen(screen_id_t scr_id)
         case SCR_MAIN:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
 
-            snprintf(line_buffer, 32, "  * Storm Detector *");
-            u8g2_DrawStr(&g_u8g2, 0, 8, line_buffer);
+            snprintf(g_line_buffer, MAX_LINE_LEN, "  * Storm Detector *");
+            u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
 
-            snprintf(line_buffer, 32, "LVL: %d", dd->warning_level);
-            u8g2_DrawStr(&g_u8g2, 0, 20, line_buffer);
+            snprintf(g_line_buffer, MAX_LINE_LEN, "LVL: %d", dd->warning_level);
+            u8g2_DrawStr(&g_u8g2, 0, 20, g_line_buffer);
+
+            snprintf(g_line_buffer, MAX_LINE_LEN, "Pressure: %.1f hPa", g_lps_pressure_hpa);
+            u8g2_DrawStr(&g_u8g2, 0, 31, g_line_buffer);
 
         break;
 
         case SCR_TA7642:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
 
-            snprintf(line_buffer, 32, "   *** TA7642 ***");
-            u8g2_DrawStr(&g_u8g2, 0, 8, line_buffer);
+            snprintf(g_line_buffer, MAX_LINE_LEN, "   *** TA7642 ***");
+            u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
 
             if (dd->warning_level == 0)
             {
-                snprintf(line_buffer, 32, "Calibrating PWM: %d", dd->pwm_duty_ctrl);
-                u8g2_DrawStr(&g_u8g2, 0, 20, line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "Calibrating PWM: %d", dd->pwm_duty_ctrl);
+                u8g2_DrawStr(&g_u8g2, 0, 20, g_line_buffer);
 
-                snprintf(line_buffer, 32, "OUT: %.3f V", convert_ta7642_out_to_volts(dd->ta7642_output));
-                u8g2_DrawStr(&g_u8g2, 0, 31, line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "OUT: %.3f V", convert_ta7642_out_to_volts(dd->ta7642_output));
+                u8g2_DrawStr(&g_u8g2, 0, 31, g_line_buffer);
             }
             else
             {
-                snprintf(line_buffer, 32, "PWM: %d, LVL: %d", dd->pwm_duty_ctrl, dd->warning_level);
-                u8g2_DrawStr(&g_u8g2, 0, 20, line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "PWM: %d, LVL: %d", dd->pwm_duty_ctrl, dd->warning_level);
+                u8g2_DrawStr(&g_u8g2, 0, 20, g_line_buffer);
 
-                snprintf(line_buffer, 32, "AVG: %.3f V", convert_ta7642_out_to_volts(dd->ta7642_output_avg));
-                u8g2_DrawStr(&g_u8g2, 0, 31, line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "AVG: %.3f V", convert_ta7642_out_to_volts(dd->ta7642_output_avg));
+                u8g2_DrawStr(&g_u8g2, 0, 31, g_line_buffer);
 
-                snprintf(line_buffer, 32, "OUT: %.3f V, CNT: %d", convert_ta7642_out_to_volts(dd->ta7642_output), dd->detections_1sec_m32 / 32);
-                u8g2_DrawStr(&g_u8g2, 0, 41, line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "OUT: %.3f V, CNT: %d", convert_ta7642_out_to_volts(dd->ta7642_output), dd->detections_1sec_m32 / 32);
+                u8g2_DrawStr(&g_u8g2, 0, 41, g_line_buffer);
 
-                snprintf(line_buffer, 32, "IDL: %d", dd->idle_timer_sec);
-                u8g2_DrawStr(&g_u8g2, 0, 51, line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "IDL: %d", dd->idle_timer_sec);
+                u8g2_DrawStr(&g_u8g2, 0, 51, g_line_buffer);
             }
 
         break;
@@ -367,16 +406,27 @@ display_screen(screen_id_t scr_id)
         case SCR_MLX90614:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
 
-            snprintf(line_buffer, 32, " *** MLX90614 ***");
-            u8g2_DrawStr(&g_u8g2, 0, 8, line_buffer);
+            snprintf(g_line_buffer, MAX_LINE_LEN, " *** MLX90614 ***");
+            u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
 
-            snprintf(line_buffer, 32, "T-rem: %.1f degC", 
+            snprintf(g_line_buffer, MAX_LINE_LEN, "T-rem: %.1f degC",
                 g_mlx90614_data.temperature_remote);
-            u8g2_DrawStr(&g_u8g2, 0, 22, line_buffer);
+            u8g2_DrawStr(&g_u8g2, 0, 22, g_line_buffer);
 
-            snprintf(line_buffer, 32, "T-amb: %.1f degC",
+            snprintf(g_line_buffer, MAX_LINE_LEN, "T-amb: %.1f degC",
                 g_mlx90614_data.temperature_ambient);
-            u8g2_DrawStr(&g_u8g2, 0, 34, line_buffer);
+            u8g2_DrawStr(&g_u8g2, 0, 34, g_line_buffer);
+
+        break;
+
+        case SCR_LPS22HH:
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
+
+            snprintf(g_line_buffer, MAX_LINE_LEN, " *** LPS22HH ***");
+            u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
+
+            snprintf(g_line_buffer, MAX_LINE_LEN, "Pressure: %.1f hPa", g_lps_pressure_hpa);
+            u8g2_DrawStr(&g_u8g2, 0, 22, g_line_buffer);
 
         break;
 

@@ -159,19 +159,31 @@ init_peripherals(void)
     // Initialize MLX90614 sensor
     if (result != -1)
     {
-        DEBUG("Initializing MLX90614\n", __FUNCTION__);
-
+        DEBUG("Initializing MLX90614", __FUNCTION__);
         gp_mlx = mlx90614_open(g_fd_i2c, MLX90614_I2C_ADDRESS);
 
         if (!gp_mlx)
         {
             ERROR("ERROR: Could not initialize MLX90614.\n", __FUNCTION__);
-            result = -1;
+            // This is optional component, not aborting init process here
         }
         else
         {
             // Set measurement unit to degrees Celsius
             mlx90614_set_temperature_unit(gp_mlx, MLX_TEMP_CELSIUS);
+        }
+    }
+
+    // Initialize LPS22HH sensor
+    if (result != -1)
+    {
+        DEBUG("Initializing LPS22HH", __FUNCTION__);
+        gp_lps22hh_ctx = lps22hh_open_via_lsm6dso(g_fd_i2c);
+
+        if (!gp_lps22hh_ctx)
+        {
+            ERROR("ERROR: Failed to initialize LPS22HH sensor\n", __FUNCTION__);
+            // This is optional component, not aborting init process here
         }
     }
 
@@ -215,6 +227,11 @@ init_peripherals(void)
                 __FUNCTION__, strerror(errno), errno);
             result = -1;
         }
+        else
+        {
+            // Set Red RGB LED as Off
+            GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_High);
+        }
     }
 
     // -- Open Green RGB LED GPIO as output
@@ -229,6 +246,11 @@ init_peripherals(void)
             ERROR("ERROR: Could not open Green RGB LED GPIO: %s (%d).\n",
                 __FUNCTION__, strerror(errno), errno);
             result = -1;
+        }
+        else
+        {
+            // Set Green RGB LED as Off
+            GPIO_SetValue(g_fd_gpio_rgbled_green, GPIO_Value_High);
         }
     }
 
@@ -257,8 +279,24 @@ init_shutdown(void)
     // Close Epoll fd
     fd_close(g_fd_epoll, "Epoll");
 
+    // Close LPS22HH sensor
+    if (gp_lps22hh_ctx)
+    {
+        lps22hh_close(gp_lps22hh_ctx);
+    }
+
+    // Close MLX90614 sensor
+    if (gp_mlx)
+    {
+        mlx90614_close(gp_mlx);
+    }
+
     // Close I2C
     fd_close(g_fd_i2c, "I2C");
+
+    // Switch off LEDs
+    GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_High);
+    GPIO_SetValue(g_fd_gpio_rgbled_green, GPIO_Value_High);
 
     // Close GPIO fds
     fd_close(g_fd_gpio_button1, "Button1 GPIO");
