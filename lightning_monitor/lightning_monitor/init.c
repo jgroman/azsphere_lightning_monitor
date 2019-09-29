@@ -88,7 +88,7 @@ init_handlers(void)
         }
     }
 
-    // Create timer for data request poll
+    // Create poll timer for data request
     if (result != -1)
     {
         static const struct timespec SAMPLE_REQUEST_PERIOD = { 4, 0 };
@@ -98,6 +98,22 @@ init_handlers(void)
         if (g_fd_poll_timer_sample < 0)
         {
             // Failed to create data request poll timer
+            ERROR("ERROR: Could not create poll timer: %s (%d).\n",
+                __FUNCTION__, strerror(errno), errno);
+            result = -1;
+        }
+    }
+
+    // Create poll timer for Azure upload
+    if (result != -1)
+    {
+        static const struct timespec AZURE_UPLOAD_PERIOD = { 5 * 60, 0 };
+
+        g_fd_poll_timer_sample = CreateTimerFdAndAddToEpoll(g_fd_epoll,
+            &AZURE_UPLOAD_PERIOD, &g_event_data_poll_upload, EPOLLIN);
+        if (g_fd_poll_timer_sample < 0)
+        {
+            // Failed to create Azure upload poll timer
             ERROR("ERROR: Could not create poll timer: %s (%d).\n",
                 __FUNCTION__, strerror(errno), errno);
             result = -1;

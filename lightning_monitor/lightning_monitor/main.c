@@ -9,6 +9,8 @@
 #include <string.h>
 #include <time.h>
 #include <stdio.h>
+#include <stdlib.h>
+
 
 #include <applibs/log.h>
 #include <applibs/i2c.h>
@@ -21,7 +23,9 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <applibs/application.h>
+#include <azureiot/iothub_device_client_ll.h>
 
+#include "azure_iot_utilities.h"
 #include "init.h"
 #include "support.h"
 #include "main.h"
@@ -57,6 +61,8 @@
 
 // Maximum line length on OLED display
 #define MAX_LINE_LEN                (32U)
+
+#define JSON_BUFFER_SIZE 128
 
 typedef struct
 {
@@ -107,7 +113,6 @@ typedef enum
 } screen_id_t;
 
 const struct timespec SLEEP_TIME_5S = { 5, 0 };
-
 
 /*******************************************************************************
 * Forward declarations of private functions
@@ -173,6 +178,8 @@ static float g_lps_pressure_hpa;
 // LPS22HH general register
 static lps22hh_reg_t g_lps_reg;
 
+// Provide local access to variables in other files
+//extern IOTHUB_DEVICE_CLIENT_LL_HANDLE iothubClientHandle;
 
 /*******************************************************************************
 * Public function definitions
@@ -222,6 +229,24 @@ main(int argc, char *argv[])
                 // Event polling failed
                 gb_is_termination_requested = true;
             }
+
+#           ifdef IOT_HUB_APPLICATION
+            // Setup the IoT Hub client.
+            // Notes:
+            // - it is safe to call this function even if the client has already been set up, as in
+            //   this case it would have no effect;
+            // - a failure to setup the client is a fatal error.
+            if (!AzureIoT_SetupClient()) 
+            {
+                Log_Debug("ERROR: Failed to set up IoT Hub client\n");
+                break;
+            }
+
+            // AzureIoT_DoPeriodicTasks() needs to be called frequently in order to keep active
+            // the flow of data with the Azure IoT Hub
+            AzureIoT_DoPeriodicTasks();
+#           endif
+
         }
         DEBUG("Exiting main loop.\n", __FUNCTION__);
 
@@ -337,6 +362,36 @@ handle_rtcore_receive(void)
             memcpy(&g_detector_data, buf_rx + 1, (size_t)(bytes_received - 1));
         }
     }
+
+    return;
+}
+
+void
+handle_azure_upload(void)
+{
+#   ifdef IOT_HUB_APPLICATION
+    char *p_buffer_json;
+
+    if ((p_buffer_json = malloc(JSON_BUFFER_SIZE)) == NULL)
+    {
+        ERROR("ERROR: not enough memory for upload buffer.", __FUNCTION__);
+    }
+    else
+    {
+        // Construct Azure upload message
+        snprintf(p_buffer_json, JSON_BUFFER_SIZE, 
+            "{\"warning_level\":\"%d\", \"pressure\":\"%.2f\", "
+            "\"temp_delta\":\"%.1f\"}",
+            g_detector_data.warning_level, g_lps_pressure_hpa, 
+            g_mlx90614_data.temperature_remote - g_mlx90614_data.temperature_ambient);
+
+        DEBUG("Uploading to Azure: %s", __FUNCTION__, p_buffer_json);
+        
+        //AzureIoT_SendMessage(pjsonBuffer);
+
+        free(p_buffer_json);
+    }
+#   endif
 
     return;
 }

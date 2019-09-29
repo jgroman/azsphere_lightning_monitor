@@ -42,6 +42,8 @@ extern "C" {
 // Using a single-thread event loop pattern based on Epoll and timerfd
 #include "epoll_timerfd_utilities.h"
 
+#include "build_options.h"
+
 // OLED support library
 #include "lib_u8g2.h"
 
@@ -85,6 +87,9 @@ handle_request_data(void);
 
 void
 handle_rtcore_receive(void);
+
+void
+handle_azure_upload(void);
 
 void
 handle_button1_press(void);

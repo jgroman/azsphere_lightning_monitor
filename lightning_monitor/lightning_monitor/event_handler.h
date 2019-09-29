@@ -22,8 +22,10 @@ extern int g_fd_gpio_button2;
 
 extern int g_fd_poll_timer_button;
 extern int g_fd_poll_timer_sample;
+extern int g_fd_poll_timer_upload;
 
 extern EventData g_event_data_poll_sample;
+extern EventData g_event_data_poll_upload;
 extern EventData g_event_data_socket;
 extern EventData g_event_data_button;
 
@@ -32,13 +34,19 @@ extern EventData g_event_data_button;
 *******************************************************************************/
 
 /**
- * @brief Timer event handler for polling RTCore
+ * @brief Poll timer event handler for requesting measurements
  */
 void
 event_handler_timer_sample(EventData *event_data);
 
 /**
- * @brief Timer event handler for polling buttons
+ * @brief Poll timer event handler for uploading to Azure
+ */
+void
+event_handler_timer_upload(EventData *event_data);
+
+/**
+ * @brief Poll timer event handler for checking button state
  */
 void
 event_handler_timer_button(EventData *event_data);

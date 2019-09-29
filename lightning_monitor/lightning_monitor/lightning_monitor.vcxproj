@@ -42,15 +42,19 @@
     <PartnerComponents>ac067706-9bda-425a-a766-a91a2c4e32c0</PartnerComponents>
   </PropertyGroup>
   <ItemGroup>
+    <ClCompile Include="azure_iot_utilities.c" />
     <ClCompile Include="epoll_timerfd_utilities.c" />
     <ClCompile Include="event_handler.c" />
     <ClCompile Include="init.c" />
     <ClCompile Include="main.c" />
+    <ClCompile Include="parson.c" />
     <ClCompile Include="support.c" />
     <UpToDateCheckInput Include="app_manifest.json" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="applibs_versions.h" />
+    <ClInclude Include="build_options.h" />
+    <ClInclude Include="connection_strings.h" />
     <ClInclude Include="event_handler.h" />
     <ClInclude Include="graphics.h" />
     <ClInclude Include="init.h" />

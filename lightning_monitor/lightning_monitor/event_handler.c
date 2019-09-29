@@ -25,13 +25,17 @@ int g_fd_gpio_button2 = -1;
 
 int g_fd_poll_timer_button = -1;
 int g_fd_poll_timer_sample = -1;
-
+int g_fd_poll_timer_upload = -1;
 
 static GPIO_Value_Type g_state_button1 = GPIO_Value_High;
 static GPIO_Value_Type g_state_button2 = GPIO_Value_High;
 
-EventData g_event_data_poll_sample = {          // RTCore Poll Event data
+EventData g_event_data_poll_sample = {          // Request data Event data
     .eventHandler = &event_handler_timer_sample
+};
+
+EventData g_event_data_poll_upload = {          // Azure upload Event data
+    .eventHandler = &event_handler_timer_upload
 };
 
 EventData g_event_data_socket = {      // Socket Event data
@@ -41,8 +45,6 @@ EventData g_event_data_socket = {      // Socket Event data
 EventData g_event_data_button = {          // Button Event data
     .eventHandler = &event_handler_timer_button
 };
-
-
 
 /*******************************************************************************
 * Function definitions
@@ -57,6 +59,30 @@ event_handler_timer_sample(EventData *event_data)
 
     // Consume timer event
     if (ConsumeTimerFdEvent(g_fd_poll_timer_sample) != 0) 
+    {
+        // Failed to consume timer event
+        gb_is_termination_requested = true;
+        b_is_all_ok = false;
+    }
+
+    if (b_is_all_ok)
+    {
+        // Upload data to Azure
+        handle_azure_upload();
+    }
+
+    return;
+}
+
+void
+event_handler_timer_upload(EventData *event_data)
+{
+    // Collect measurement samples from all sources
+
+    bool b_is_all_ok = true;
+
+    // Consume timer event
+    if (ConsumeTimerFdEvent(g_fd_poll_timer_upload) != 0)
     {
         // Failed to consume timer event
         gb_is_termination_requested = true;
