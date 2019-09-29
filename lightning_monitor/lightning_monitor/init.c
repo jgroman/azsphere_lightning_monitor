@@ -113,7 +113,7 @@ init_peripherals(void)
     int result = -1;
 
     // Initialize I2C
-    DEBUG("Init I2C\n", __FUNCTION__);
+    DEBUG("Initializing I2C", __FUNCTION__);
     g_fd_i2c = I2CMaster_Open(I2C_ISU);
     if (g_fd_i2c < 0) 
     {
@@ -142,7 +142,7 @@ init_peripherals(void)
     // Initialize 128x64 SSD1306 OLED
     if (result != -1)
     {
-        DEBUG("Initializing OLED display.\n", __FUNCTION__);
+        DEBUG("Initializing OLED display.", __FUNCTION__);
         
         // Set lib_u8g2 I2C interface file descriptor and device address
         lib_u8g2_set_i2c(g_fd_i2c, I2C_ADDR_OLED);
@@ -191,7 +191,7 @@ init_peripherals(void)
     // -- Open button1 GPIO as input
     if (result != -1)
     {
-        DEBUG("Opening PROJECT_BUTTON_1 as input.\n", __FUNCTION__);
+        DEBUG("Opening PROJECT_BUTTON_1 as input.", __FUNCTION__);
         g_fd_gpio_button1 = GPIO_OpenAsInput(PROJECT_BUTTON_1);
         if (g_fd_gpio_button1 < 0) {
             // Failed to open button1 GPIO
@@ -204,7 +204,7 @@ init_peripherals(void)
     // -- Open button2 GPIO as input
     if (result != -1)
     {
-        DEBUG("Opening PROJECT_BUTTON_2 as input.\n", __FUNCTION__);
+        DEBUG("Opening PROJECT_BUTTON_2 as input.", __FUNCTION__);
         g_fd_gpio_button2 = GPIO_OpenAsInput(PROJECT_BUTTON_2);
         if (g_fd_gpio_button2 < 0) {
             // Failed to open button2 GPIO
@@ -217,7 +217,7 @@ init_peripherals(void)
     // -- Open Red RGB LED GPIO as output
     if (result != -1)
     {
-        DEBUG("Opening PROJECT_RGBLED_RED as output.\n", __FUNCTION__);
+        DEBUG("Opening PROJECT_RGBLED_RED as output.", __FUNCTION__);
         g_fd_gpio_rgbled_red = GPIO_OpenAsOutput(PROJECT_RGBLED_RED, 
             GPIO_OutputMode_PushPull, GPIO_Value_High);     // LED is Off
         if (g_fd_gpio_rgbled_red < 0)
@@ -237,7 +237,7 @@ init_peripherals(void)
     // -- Open Green RGB LED GPIO as output
     if (result != -1)
     {
-        DEBUG("Opening PROJECT_RGBLED_GREEN as output.\n", __FUNCTION__);
+        DEBUG("Opening PROJECT_RGBLED_GREEN as output.", __FUNCTION__);
         g_fd_gpio_rgbled_green = GPIO_OpenAsOutput(PROJECT_RGBLED_GREEN,
             GPIO_OutputMode_PushPull, GPIO_Value_High);     // LED is Off
         if (g_fd_gpio_rgbled_green < 0)

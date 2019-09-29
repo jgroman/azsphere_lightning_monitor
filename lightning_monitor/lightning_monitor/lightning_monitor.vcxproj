@@ -52,6 +52,7 @@
   <ItemGroup>
     <ClInclude Include="applibs_versions.h" />
     <ClInclude Include="event_handler.h" />
+    <ClInclude Include="graphics.h" />
     <ClInclude Include="init.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="support.h" />

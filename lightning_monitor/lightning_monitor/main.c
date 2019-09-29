@@ -26,6 +26,8 @@
 #include "support.h"
 #include "main.h"
 
+#include "graphics.h"
+
 /*******************************************************************************
 *   Macros and #define Constants
 *******************************************************************************/
@@ -34,20 +36,31 @@
 #define RTCORE_MESSAGE_BUFFER_SIZE  (32u)
 
 // RTCore data reply message length
-#define RTCORE_DATA_LENGTH  (16u)
+#define RTCORE_DATA_LENGTH          (16u)
 
 // Warning levels for RGB LED
-#define WARNING_LEVEL_LOW          (2000u)
-#define WARNING_LEVEL_MIDDLE       (4000u)
-#define WARNING_LEVEL_HIGH         (6000u)
+#define WARNING_LEVEL_GREEN         (2000u)
+#define WARNING_LEVEL_YELLOW        (4000u)
+#define WARNING_LEVEL_RED           (6000u)
+
+// Warning level bar graph extremes
+#define WARNING_LEVEL_MAX           (7000u)
+#define WARNING_LEVEL_MIN           (255u)
+
+// Atmospheric pressure bar graph extremes
+#define PRESSURE_MAX_HPA            (1070u)
+#define PRESSURE_MIN_HPA            (920u)
+
+// Cloudiness bar graph extremes
+#define CLOUD_DELTA_T_MAX           (10u)
+#define CLOUD_DELTA_T_MIN           (0u)
 
 // Maximum line length on OLED display
 #define MAX_LINE_LEN                (32U)
 
 typedef struct
 {
-    // PWM duty control variable. Allowed values: 0 - PWM_DUTY_MAX
-    // PWM duty ratio is directly controlled by changing this value
+    // PWM duty control value
     // 1 byte
     uint8_t pwm_duty_ctrl;
 
@@ -67,8 +80,7 @@ typedef struct
     // 2 bytes
     uint16_t warning_level;
 
-    // Time since the last impulse detection. After one hour with no detection
-    // PWM is recalibrated
+    // Time since the last impulse detection.
     // 2 bytes
     uint16_t idle_timer_sec;
 
@@ -76,19 +88,26 @@ typedef struct
 
 typedef struct
 {
+    // Ambient (sensor) temperature
     float temperature_ambient;
 
+    // Remote temperature
     float temperature_remote;
 } mlx90614_data_t;
 
 typedef enum
 {
-    SCR_INTRO,
+    SCR_LOGO,
     SCR_MAIN,
+    SCR_MAIN_2,
     SCR_TA7642,
     SCR_MLX90614,
-    SCR_LPS22HH
+    SCR_LPS22HH,
+    SCR_ABOUT
 } screen_id_t;
+
+const struct timespec SLEEP_TIME_5S = { 5, 0 };
+
 
 /*******************************************************************************
 * Forward declarations of private functions
@@ -165,8 +184,6 @@ static lps22hh_reg_t g_lps_reg;
 int 
 main(int argc, char *argv[])
 {
-    DEBUG("*** App starting ***\n", __FUNCTION__);
-
     // Initialize handlers
     if (init_handlers() != 0)
     {
@@ -186,7 +203,9 @@ main(int argc, char *argv[])
     {
         u8g2_ClearDisplay(&g_u8g2);
 
-        DEBUG("Waiting for events.\n", __FUNCTION__);
+        // Display app logo
+        display_screen(SCR_LOGO);
+        //nanosleep(&SLEEP_TIME_5S, NULL);
 
         // Main program loop
         while (!gb_is_termination_requested)
@@ -230,11 +249,13 @@ handle_termination(int signal_number)
 void
 handle_button1_press(void)
 {
-    DEBUG("Button1 pressed.\n", __FUNCTION__);
-
     switch (g_screen_id)
     {
         case SCR_MAIN:
+            g_screen_id = SCR_MAIN_2;
+        break;
+
+        case SCR_MAIN_2:
             g_screen_id = SCR_TA7642;
         break;
 
@@ -247,6 +268,10 @@ handle_button1_press(void)
         break;
 
         case SCR_LPS22HH:
+            g_screen_id = SCR_ABOUT;
+        break;
+
+        case SCR_ABOUT:
             g_screen_id = SCR_MAIN;
         break;
 
@@ -316,7 +341,6 @@ handle_rtcore_receive(void)
     return;
 }
 
-
 /*******************************************************************************
 * Private function definitions
 *******************************************************************************/
@@ -353,23 +377,104 @@ static void
 display_screen(screen_id_t scr_id)
 {
     detector_data_t *dd = &g_detector_data;
+    float bar_length;
+
+    float warning_level_cropped;
+    float pressure_cropped;
+    float cloud_temp_cropped;
+    float cloud_temp_delta;
+
+    const uint8_t X_BAR_START = 20;
+    
+    const u8g2_uint_t BAR_LENGTH_MAX = 108;
+    const uint8_t BAR_HEIGHT = 14;
 
     u8g2_ClearBuffer(&g_u8g2);
 
     switch (scr_id)
     {
+        case SCR_LOGO:
+            u8g2_DrawXBM(&g_u8g2, 31, 0, LOGO_WIDTH, LOGO_HEIGHT, LOGO_BITS);
+        break;
+
         case SCR_MAIN:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
 
             snprintf(g_line_buffer, MAX_LINE_LEN, "  * Storm Detector *");
             u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, "LVL: %d", dd->warning_level);
-            u8g2_DrawStr(&g_u8g2, 0, 20, g_line_buffer);
+            // Show warning level bar graph
+            warning_level_cropped = (dd->warning_level < WARNING_LEVEL_MIN) ?
+                WARNING_LEVEL_MIN :
+                (dd->warning_level > WARNING_LEVEL_MAX) ?
+                    WARNING_LEVEL_MAX :
+                    dd->warning_level;
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, "Pressure: %.1f hPa", g_lps_pressure_hpa);
-            u8g2_DrawStr(&g_u8g2, 0, 31, g_line_buffer);
+            u8g2_DrawXBM(&g_u8g2, 0, 12, lightning_width, lightning_height, lightning_bits);
+            u8g2_DrawRFrame(&g_u8g2, X_BAR_START, 12, BAR_LENGTH_MAX, BAR_HEIGHT, 2);
+            bar_length = (warning_level_cropped - WARNING_LEVEL_MIN) * ((float)BAR_LENGTH_MAX / (WARNING_LEVEL_MAX - WARNING_LEVEL_MIN));
+            if (bar_length > 0)
+            {
+                u8g2_DrawRBox(&g_u8g2, X_BAR_START, 12, (u8g2_uint_t)bar_length, BAR_HEIGHT, 2);
+            }
 
+            // Show pressure bar graph
+            pressure_cropped = (g_lps_pressure_hpa < PRESSURE_MIN_HPA) ?
+                PRESSURE_MIN_HPA :
+                (g_lps_pressure_hpa > PRESSURE_MAX_HPA) ?
+                    PRESSURE_MAX_HPA :
+                    g_lps_pressure_hpa;
+
+            u8g2_DrawXBM(&g_u8g2, 2, 31, pressure_width, pressure_height, pressure_bits);
+            u8g2_DrawRFrame(&g_u8g2, X_BAR_START, 31, (u8g2_uint_t)BAR_LENGTH_MAX, BAR_HEIGHT, 2);
+            bar_length = (pressure_cropped - PRESSURE_MIN_HPA) * ((float)BAR_LENGTH_MAX / (PRESSURE_MAX_HPA - PRESSURE_MIN_HPA));
+            if (bar_length > 0)
+            {
+                u8g2_DrawRBox(&g_u8g2, X_BAR_START, 31, (u8g2_uint_t)bar_length, BAR_HEIGHT, 2);
+            }
+
+            // Show clouds bar graph
+            cloud_temp_delta = g_mlx90614_data.temperature_remote -
+                g_mlx90614_data.temperature_ambient;
+
+            cloud_temp_cropped = (cloud_temp_delta < CLOUD_DELTA_T_MIN) ?
+                CLOUD_DELTA_T_MIN :
+                (cloud_temp_delta > CLOUD_DELTA_T_MAX) ?
+                    CLOUD_DELTA_T_MAX :
+                    cloud_temp_delta;
+
+            u8g2_DrawXBM(&g_u8g2, 0, 52, cloud_width, cloud_height, cloud_bits);
+            u8g2_DrawRFrame(&g_u8g2, X_BAR_START, 50, (u8g2_uint_t)BAR_LENGTH_MAX, BAR_HEIGHT, 2);
+            bar_length = (cloud_temp_cropped - CLOUD_DELTA_T_MIN) * ((float)BAR_LENGTH_MAX / (CLOUD_DELTA_T_MAX - CLOUD_DELTA_T_MIN));
+            if (bar_length > 0)
+            {
+                u8g2_DrawRBox(&g_u8g2, X_BAR_START, 50, (u8g2_uint_t)bar_length, BAR_HEIGHT, 2);
+            }
+
+        break;
+
+        case SCR_MAIN_2:
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
+
+            snprintf(g_line_buffer, MAX_LINE_LEN, "  * Storm Detector *");
+            u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
+
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_14b_tr);
+
+            u8g2_DrawXBM(&g_u8g2, 0, 12, lightning_width, lightning_height, lightning_bits);
+            snprintf(g_line_buffer, MAX_LINE_LEN, "%d", dd->warning_level);
+            u8g2_DrawStr(&g_u8g2, X_BAR_START, 25, g_line_buffer);
+
+            u8g2_DrawXBM(&g_u8g2, 2, 31, pressure_width, pressure_height, pressure_bits);
+            snprintf(g_line_buffer, MAX_LINE_LEN, "%.1f hPa", g_lps_pressure_hpa);
+            u8g2_DrawStr(&g_u8g2, X_BAR_START, 44, g_line_buffer);
+
+            cloud_temp_delta = g_mlx90614_data.temperature_remote -
+                g_mlx90614_data.temperature_ambient;
+
+            u8g2_DrawXBM(&g_u8g2, 0, 52, cloud_width, cloud_height, cloud_bits);
+            snprintf(g_line_buffer, MAX_LINE_LEN, "# %.1f C", cloud_temp_delta);
+            u8g2_DrawStr(&g_u8g2, X_BAR_START, 63, g_line_buffer);
         break;
 
         case SCR_TA7642:
@@ -430,6 +535,10 @@ display_screen(screen_id_t scr_id)
 
         break;
 
+        case SCR_ABOUT:
+            u8g2_DrawXBM(&g_u8g2, 0, 0, LOGO_WIDTH, LOGO_HEIGHT, LOGO_BITS);
+        break;
+
         default:
         break;
     }
@@ -451,27 +560,27 @@ show_level_on_rgb(void)
 
     detector_data_t *dd = &g_detector_data;
 
-    if (dd->warning_level > WARNING_LEVEL_HIGH + HYSTERESIS)
+    if (dd->warning_level > WARNING_LEVEL_RED + HYSTERESIS)
     {
         // Red On, Green Off
         GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_Low);
         GPIO_SetValue(g_fd_gpio_rgbled_green, GPIO_Value_High);
     }
-    else if ((dd->warning_level > WARNING_LEVEL_MIDDLE + HYSTERESIS) && 
-        (dd->warning_level < WARNING_LEVEL_HIGH - HYSTERESIS))
+    else if ((dd->warning_level > WARNING_LEVEL_YELLOW + HYSTERESIS) && 
+        (dd->warning_level < WARNING_LEVEL_RED - HYSTERESIS))
     {
         // Red On, Green On (= Yellow)
         GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_Low);
         GPIO_SetValue(g_fd_gpio_rgbled_green, GPIO_Value_Low);
     }
-    else if ((dd->warning_level > WARNING_LEVEL_LOW + HYSTERESIS) &&
-        (dd->warning_level < WARNING_LEVEL_MIDDLE - HYSTERESIS))
+    else if ((dd->warning_level > WARNING_LEVEL_GREEN + HYSTERESIS) &&
+        (dd->warning_level < WARNING_LEVEL_YELLOW - HYSTERESIS))
     {
         // Red Off, Green On
         GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_High);
         GPIO_SetValue(g_fd_gpio_rgbled_green, GPIO_Value_Low);
     }
-    else if (dd->warning_level < WARNING_LEVEL_LOW - HYSTERESIS)
+    else if (dd->warning_level < WARNING_LEVEL_GREEN - HYSTERESIS)
     {
         // Red Off, Green Off
         GPIO_SetValue(g_fd_gpio_rgbled_red, GPIO_Value_High);
