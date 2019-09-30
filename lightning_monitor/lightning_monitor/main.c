@@ -212,7 +212,7 @@ main(int argc, char *argv[])
 
         // Display app logo
         display_screen(SCR_LOGO);
-        //nanosleep(&SLEEP_TIME_5S, NULL);
+        nanosleep(&SLEEP_TIME_5S, NULL);
 
         // Main program loop
         while (!gb_is_termination_requested)
@@ -468,8 +468,10 @@ display_screen(screen_id_t scr_id)
             u8g2_DrawXBM(&g_u8g2, 0, 12, lightning_width, lightning_height, lightning_bits);
             u8g2_DrawRFrame(&g_u8g2, X_BAR_START, 12, BAR_LENGTH_MAX, BAR_HEIGHT, 2);
             bar_length = (warning_level_cropped - WARNING_LEVEL_MIN) * ((float)BAR_LENGTH_MAX / (WARNING_LEVEL_MAX - WARNING_LEVEL_MIN));
-            if (bar_length > 0)
+            if (bar_length > 5)
             {
+                // Minimum displayed length depends on bar corner radius 
+                // This is u8g2 library limitation
                 u8g2_DrawRBox(&g_u8g2, X_BAR_START, 12, (u8g2_uint_t)bar_length, BAR_HEIGHT, 2);
             }
 
@@ -483,8 +485,10 @@ display_screen(screen_id_t scr_id)
             u8g2_DrawXBM(&g_u8g2, 2, 31, pressure_width, pressure_height, pressure_bits);
             u8g2_DrawRFrame(&g_u8g2, X_BAR_START, 31, (u8g2_uint_t)BAR_LENGTH_MAX, BAR_HEIGHT, 2);
             bar_length = (pressure_cropped - PRESSURE_MIN_HPA) * ((float)BAR_LENGTH_MAX / (PRESSURE_MAX_HPA - PRESSURE_MIN_HPA));
-            if (bar_length > 0)
+            if (bar_length > 5)
             {
+                // Minimum displayed length depends on bar corner radius 
+                // This is u8g2 library limitation
                 u8g2_DrawRBox(&g_u8g2, X_BAR_START, 31, (u8g2_uint_t)bar_length, BAR_HEIGHT, 2);
             }
 
@@ -501,8 +505,10 @@ display_screen(screen_id_t scr_id)
             u8g2_DrawXBM(&g_u8g2, 0, 52, cloud_width, cloud_height, cloud_bits);
             u8g2_DrawRFrame(&g_u8g2, X_BAR_START, 50, (u8g2_uint_t)BAR_LENGTH_MAX, BAR_HEIGHT, 2);
             bar_length = (cloud_temp_cropped - CLOUD_DELTA_T_MIN) * ((float)BAR_LENGTH_MAX / (CLOUD_DELTA_T_MAX - CLOUD_DELTA_T_MIN));
-            if (bar_length > 0)
+            if (bar_length > 5)
             {
+                // Minimum displayed length depends on bar corner radius 
+                // This is u8g2 library limitation
                 u8g2_DrawRBox(&g_u8g2, X_BAR_START, 50, (u8g2_uint_t)bar_length, BAR_HEIGHT, 2);
             }
 
