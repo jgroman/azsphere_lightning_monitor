@@ -4,3 +4,6 @@
 [submodule "lib_mlx90614"]
 	path = lib_mlx90614
 	url = https://github.com/jgroman/azsphere_lib_mlx90614
+[submodule "lib_lps22hh"]
+	path = lib_lps22hh
+	url = https://github.com/jgroman/azsphere_lib_lps22hh.git
