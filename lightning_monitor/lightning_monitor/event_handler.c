@@ -68,7 +68,7 @@ event_handler_timer_sample(EventData *event_data)
     if (b_is_all_ok)
     {
         // Upload data to Azure
-        handle_azure_upload();
+        handle_request_data();
     }
 
     return;
@@ -92,7 +92,7 @@ event_handler_timer_upload(EventData *event_data)
     if (b_is_all_ok)
     {
         // Request measurement data from all sources
-        handle_request_data();
+        handle_azure_upload();
     }
 
     return;

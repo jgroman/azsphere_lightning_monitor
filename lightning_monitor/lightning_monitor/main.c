@@ -23,7 +23,6 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <applibs/application.h>
-#include <azureiot/iothub_device_client_ll.h>
 
 #include "azure_iot_utilities.h"
 #include "init.h"
@@ -246,7 +245,6 @@ main(int argc, char *argv[])
             // the flow of data with the Azure IoT Hub
             AzureIoT_DoPeriodicTasks();
 #           endif
-
         }
         DEBUG("Exiting main loop.\n", __FUNCTION__);
 

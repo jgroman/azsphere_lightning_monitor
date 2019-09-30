@@ -109,9 +109,9 @@ init_handlers(void)
     {
         static const struct timespec AZURE_UPLOAD_PERIOD = { 5 * 60, 0 };
 
-        g_fd_poll_timer_sample = CreateTimerFdAndAddToEpoll(g_fd_epoll,
+        g_fd_poll_timer_upload = CreateTimerFdAndAddToEpoll(g_fd_epoll,
             &AZURE_UPLOAD_PERIOD, &g_event_data_poll_upload, EPOLLIN);
-        if (g_fd_poll_timer_sample < 0)
+        if (g_fd_poll_timer_upload < 0)
         {
             // Failed to create Azure upload poll timer
             ERROR("ERROR: Could not create poll timer: %s (%d).\n",
