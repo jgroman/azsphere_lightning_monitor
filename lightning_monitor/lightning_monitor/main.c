@@ -63,6 +63,14 @@
 
 #define JSON_BUFFER_SIZE 128
 
+#define STR_SPACE                   " "
+#define STR_SENSOR                  "Sensor"
+#define STR_NOT_DETECTED            "not detected"
+#define STR_DEG_C                   "\xB0""C"
+#define STR_REMOTE                  "Remote"
+#define STR_PRESSURE                "Pressure"
+#define STR_CALIBRATING             "Calibrating"
+
 typedef struct
 {
     // PWM duty control value
@@ -107,8 +115,7 @@ typedef enum
     SCR_MAIN_2,
     SCR_TA7642,
     SCR_MLX90614,
-    SCR_LPS22HH,
-    SCR_ABOUT
+    SCR_LPS22HH
 } screen_id_t;
 
 const struct timespec SLEEP_TIME_5S = { 5, 0 };
@@ -291,10 +298,6 @@ handle_button1_press(void)
         break;
 
         case SCR_LPS22HH:
-            g_screen_id = SCR_ABOUT;
-        break;
-
-        case SCR_ABOUT:
             g_screen_id = SCR_MAIN;
         break;
 
@@ -381,7 +384,8 @@ handle_azure_upload(void)
             "{\"warning_level\":\"%d\", \"pressure\":\"%.2f\", "
             "\"temp_delta\":\"%.1f\"}",
             g_detector_data.warning_level, g_lps_pressure_hpa, 
-            g_mlx90614_data.temperature_remote - g_mlx90614_data.temperature_ambient);
+            g_mlx90614_data.temperature_remote - 
+            g_mlx90614_data.temperature_ambient);
 
         DEBUG("Uploading to Azure: %s", __FUNCTION__, p_buffer_json);
         
@@ -437,59 +441,66 @@ display_screen(screen_id_t scr_id)
     float cloud_temp_cropped;
     float cloud_temp_delta;
 
-    const uint8_t X_BAR_START = 20;
-    
     const u8g2_uint_t BAR_LENGTH_MAX = 108;
-    const uint8_t BAR_HEIGHT = 14;
+
+#   define  H_BAR           14
+#   define  X_BAR_START     20
+#   define  Y_BAR_1         8
+#   define  Y_BAR_2         29
+#   define  Y_BAR_3         50
 
     u8g2_ClearBuffer(&g_u8g2);
 
     switch (scr_id)
     {
         case SCR_LOGO:
-            u8g2_DrawXBM(&g_u8g2, 31, 0, LOGO_WIDTH, LOGO_HEIGHT, LOGO_BITS);
+            u8g2_DrawXBM(&g_u8g2, 31, 0, XBM_LOGO_W, XBM_LOGO_H, XBM_LOGO_BITS);
         break;
 
         case SCR_MAIN:
-            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
-
-            lib_u8g2_DrawCenteredStr(&g_u8g2, 8, "* Storm Detector *");
-
-            // Show warning level bar graph
+            // Warning level bar graph
             warning_level_cropped = (dd->warning_level < WARNING_LEVEL_MIN) ?
                 WARNING_LEVEL_MIN :
                 (dd->warning_level > WARNING_LEVEL_MAX) ?
                     WARNING_LEVEL_MAX :
                     dd->warning_level;
 
-            u8g2_DrawXBM(&g_u8g2, 0, 12, lightning_width, lightning_height, lightning_bits);
-            u8g2_DrawRFrame(&g_u8g2, X_BAR_START, 12, BAR_LENGTH_MAX, BAR_HEIGHT, 2);
-            bar_length = (warning_level_cropped - WARNING_LEVEL_MIN) * ((float)BAR_LENGTH_MAX / (WARNING_LEVEL_MAX - WARNING_LEVEL_MIN));
+            u8g2_DrawXBM(&g_u8g2, 0, Y_BAR_1, XBM_FLASH_W, XBM_FLASH_H, 
+                XBM_FLASH_BITS);
+            u8g2_DrawRFrame(&g_u8g2, X_BAR_START, Y_BAR_1, BAR_LENGTH_MAX, 
+                H_BAR, 2);
+            bar_length = (warning_level_cropped - WARNING_LEVEL_MIN) * 
+                ((float)BAR_LENGTH_MAX / (WARNING_LEVEL_MAX - WARNING_LEVEL_MIN));
             if (bar_length > 5)
             {
                 // Minimum displayed length depends on bar corner radius 
                 // This is u8g2 library limitation
-                u8g2_DrawRBox(&g_u8g2, X_BAR_START, 12, (u8g2_uint_t)bar_length, BAR_HEIGHT, 2);
+                u8g2_DrawRBox(&g_u8g2, X_BAR_START, Y_BAR_1, 
+                    (u8g2_uint_t)bar_length, H_BAR, 2);
             }
 
-            // Show pressure bar graph
+            // Pressure bar graph
             pressure_cropped = (g_lps_pressure_hpa < PRESSURE_MIN_HPA) ?
                 PRESSURE_MIN_HPA :
                 (g_lps_pressure_hpa > PRESSURE_MAX_HPA) ?
                     PRESSURE_MAX_HPA :
                     g_lps_pressure_hpa;
 
-            u8g2_DrawXBM(&g_u8g2, 2, 31, pressure_width, pressure_height, pressure_bits);
-            u8g2_DrawRFrame(&g_u8g2, X_BAR_START, 31, (u8g2_uint_t)BAR_LENGTH_MAX, BAR_HEIGHT, 2);
-            bar_length = (pressure_cropped - PRESSURE_MIN_HPA) * ((float)BAR_LENGTH_MAX / (PRESSURE_MAX_HPA - PRESSURE_MIN_HPA));
+            u8g2_DrawXBM(&g_u8g2, 2, Y_BAR_2, XBM_PRESS_W, XBM_PRESS_H, 
+                XBM_PRESS_BITS);
+            u8g2_DrawRFrame(&g_u8g2, X_BAR_START, Y_BAR_2, 
+                (u8g2_uint_t)BAR_LENGTH_MAX, H_BAR, 2);
+            bar_length = (pressure_cropped - PRESSURE_MIN_HPA) * 
+                ((float)BAR_LENGTH_MAX / (PRESSURE_MAX_HPA - PRESSURE_MIN_HPA));
             if (bar_length > 5)
             {
                 // Minimum displayed length depends on bar corner radius 
                 // This is u8g2 library limitation
-                u8g2_DrawRBox(&g_u8g2, X_BAR_START, 31, (u8g2_uint_t)bar_length, BAR_HEIGHT, 2);
+                u8g2_DrawRBox(&g_u8g2, X_BAR_START, Y_BAR_2, 
+                    (u8g2_uint_t)bar_length, H_BAR, 2);
             }
 
-            // Show clouds bar graph
+            // Clouds bar graph
             cloud_temp_delta = g_mlx90614_data.temperature_remote -
                 g_mlx90614_data.temperature_ambient;
 
@@ -499,108 +510,141 @@ display_screen(screen_id_t scr_id)
                     CLOUD_DELTA_T_MAX :
                     cloud_temp_delta;
 
-            u8g2_DrawXBM(&g_u8g2, 0, 52, cloud_width, cloud_height, cloud_bits);
-            u8g2_DrawRFrame(&g_u8g2, X_BAR_START, 50, (u8g2_uint_t)BAR_LENGTH_MAX, BAR_HEIGHT, 2);
-            bar_length = (cloud_temp_cropped - CLOUD_DELTA_T_MIN) * ((float)BAR_LENGTH_MAX / (CLOUD_DELTA_T_MAX - CLOUD_DELTA_T_MIN));
+            u8g2_DrawXBM(&g_u8g2, 0, Y_BAR_3 + 2, XBM_CLOUD_W, XBM_CLOUD_H, 
+                XBM_CLOUD_BITS);
+            u8g2_DrawRFrame(&g_u8g2, X_BAR_START, Y_BAR_3, 
+                (u8g2_uint_t)BAR_LENGTH_MAX, H_BAR, 2);
+            bar_length = (cloud_temp_cropped - CLOUD_DELTA_T_MIN) * 
+                ((float)BAR_LENGTH_MAX / (CLOUD_DELTA_T_MAX - CLOUD_DELTA_T_MIN));
             if (bar_length > 5)
             {
                 // Minimum displayed length depends on bar corner radius 
                 // This is u8g2 library limitation
-                u8g2_DrawRBox(&g_u8g2, X_BAR_START, 50, (u8g2_uint_t)bar_length, BAR_HEIGHT, 2);
+                u8g2_DrawRBox(&g_u8g2, X_BAR_START, Y_BAR_3, 
+                    (u8g2_uint_t)bar_length, H_BAR, 2);
             }
 
         break;
 
         case SCR_MAIN_2:
-            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
-
-            lib_u8g2_DrawCenteredStr(&g_u8g2, 8, "* Storm Detector *");
-
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_14b_tf);
+            u8g2_SetDrawColor(&g_u8g2, 1);
 
-            u8g2_DrawXBM(&g_u8g2, 0, 12, lightning_width, lightning_height, lightning_bits);
+            u8g2_DrawXBM(&g_u8g2, 0, Y_BAR_1, XBM_FLASH_W, XBM_FLASH_H, 
+                XBM_FLASH_BITS);
             snprintf(g_line_buffer, MAX_LINE_LEN, "%d", dd->warning_level);
-            u8g2_DrawStr(&g_u8g2, X_BAR_START, 25, g_line_buffer);
+            u8g2_DrawStr(&g_u8g2, X_BAR_START, Y_BAR_1 + 12, g_line_buffer);
 
-            u8g2_DrawXBM(&g_u8g2, 2, 31, pressure_width, pressure_height, pressure_bits);
+            u8g2_DrawXBM(&g_u8g2, 2, Y_BAR_2, XBM_PRESS_W, XBM_PRESS_H, 
+                XBM_PRESS_BITS);
             snprintf(g_line_buffer, MAX_LINE_LEN, "%.1f hPa", g_lps_pressure_hpa);
-            u8g2_DrawStr(&g_u8g2, X_BAR_START, 44, g_line_buffer);
+            u8g2_DrawStr(&g_u8g2, X_BAR_START, Y_BAR_2 + 12, g_line_buffer);
 
             cloud_temp_delta = g_mlx90614_data.temperature_remote -
                 g_mlx90614_data.temperature_ambient;
 
-            u8g2_DrawXBM(&g_u8g2, 0, 52, cloud_width, cloud_height, cloud_bits);
-            snprintf(g_line_buffer, MAX_LINE_LEN, "\xBB %.1f \xB0""C", cloud_temp_delta);
-            u8g2_DrawStr(&g_u8g2, X_BAR_START, 63, g_line_buffer);
+            u8g2_DrawXBM(&g_u8g2, 0, Y_BAR_3 + 2, XBM_CLOUD_W, XBM_CLOUD_H, 
+                XBM_CLOUD_BITS);
+            snprintf(g_line_buffer, MAX_LINE_LEN, "\xBB %.1f " STR_DEG_C, 
+                cloud_temp_delta);
+            u8g2_DrawStr(&g_u8g2, X_BAR_START, Y_BAR_3 + 12, g_line_buffer);
         break;
 
         case SCR_TA7642:
-            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_mr);
+            u8g2_SetDrawColor(&g_u8g2, 0);
 
-            lib_u8g2_DrawCenteredStr(&g_u8g2, 8, "*** TA7642 ***");
+            lib_u8g2_DrawCenteredStr(&g_u8g2, 11, STR_SPACE "TA7642" STR_SPACE);
+
+            u8g2_SetDrawColor(&g_u8g2, 1);
 
             if (dd->warning_level == 0)
             {
                 u8g2_SetFont(&g_u8g2, u8g2_font_t0_14b_tf);
 
-                lib_u8g2_DrawCenteredStr(&g_u8g2, 28, "CALIBRATING");
+                lib_u8g2_DrawCenteredStr(&g_u8g2, 28, STR_CALIBRATING "...");
 
-                snprintf(g_line_buffer, MAX_LINE_LEN, "PWM: %d", dd->pwm_duty_ctrl);
-                u8g2_DrawStr(&g_u8g2, 0, 46, g_line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "PWM: %d", 
+                    dd->pwm_duty_ctrl);
+                lib_u8g2_DrawCenteredStr(&g_u8g2, 46, g_line_buffer);
 
-                snprintf(g_line_buffer, MAX_LINE_LEN, "OUT: %.3f V", convert_ta7642_out_to_volts(dd->ta7642_output));
-                u8g2_DrawStr(&g_u8g2, 0, 60, g_line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "OUT: %.3f V", 
+                    convert_ta7642_out_to_volts(dd->ta7642_output));
+                lib_u8g2_DrawCenteredStr(&g_u8g2, 60, g_line_buffer);
             }
             else
             {
-                snprintf(g_line_buffer, MAX_LINE_LEN, "PWM: %d, LVL: %d", dd->pwm_duty_ctrl, dd->warning_level);
-                u8g2_DrawStr(&g_u8g2, 0, 20, g_line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "PWM: %d, LVL: %d", 
+                    dd->pwm_duty_ctrl, dd->warning_level);
+                u8g2_DrawStr(&g_u8g2, 0, 23, g_line_buffer);
 
-                snprintf(g_line_buffer, MAX_LINE_LEN, "AVG: %.3f V", convert_ta7642_out_to_volts(dd->ta7642_output_avg));
-                u8g2_DrawStr(&g_u8g2, 0, 31, g_line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "AVG: %.3f V", 
+                    convert_ta7642_out_to_volts(dd->ta7642_output_avg));
+                u8g2_DrawStr(&g_u8g2, 0, 35, g_line_buffer);
 
-                snprintf(g_line_buffer, MAX_LINE_LEN, "OUT: %.3f V, CNT: %d", convert_ta7642_out_to_volts(dd->ta7642_output), dd->detections_1sec_m32 / 32);
-                u8g2_DrawStr(&g_u8g2, 0, 41, g_line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "OUT: %.3f V, CNT: %d", 
+                    convert_ta7642_out_to_volts(dd->ta7642_output), 
+                    dd->detections_1sec_m32 / 32);
+                u8g2_DrawStr(&g_u8g2, 0, 46, g_line_buffer);
 
-                snprintf(g_line_buffer, MAX_LINE_LEN, "IDL: %d", dd->idle_timer_sec);
-                u8g2_DrawStr(&g_u8g2, 0, 51, g_line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "IDL: %d", 
+                    dd->idle_timer_sec);
+                u8g2_DrawStr(&g_u8g2, 0, 57, g_line_buffer);
             }
 
         break;
 
         case SCR_MLX90614:
-            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_mr);
+            u8g2_SetDrawColor(&g_u8g2, 0);
 
-            lib_u8g2_DrawCenteredStr(&g_u8g2, 8, "*** MLX90614 ***");
+            lib_u8g2_DrawCenteredStr(&g_u8g2, 11, STR_SPACE "MLX90614" STR_SPACE);
 
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_14b_tf);
+            u8g2_SetDrawColor(&g_u8g2, 1);
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, "Remote: %.1f \xb0""C",
-                g_mlx90614_data.temperature_remote);
-            u8g2_DrawStr(&g_u8g2, 0, 28, g_line_buffer);
+            if (gp_mlx)
+            {
+                snprintf(g_line_buffer, MAX_LINE_LEN, 
+                    STR_REMOTE ": %.1f " STR_DEG_C,
+                    g_mlx90614_data.temperature_remote);
+                u8g2_DrawStr(&g_u8g2, 0, 32, g_line_buffer);
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, "Sensor: %.1f \xb0""C",
-                g_mlx90614_data.temperature_ambient);
-            u8g2_DrawStr(&g_u8g2, 0, 44, g_line_buffer);
+                snprintf(g_line_buffer, MAX_LINE_LEN, 
+                    STR_SENSOR ": %.1f " STR_DEG_C,
+                    g_mlx90614_data.temperature_ambient);
+                u8g2_DrawStr(&g_u8g2, 0, 50, g_line_buffer);
+            }
+            else
+            {
+                lib_u8g2_DrawCenteredStr(&g_u8g2, 32, STR_SENSOR);
+                lib_u8g2_DrawCenteredStr(&g_u8g2, 50, STR_NOT_DETECTED);
+            }
 
         break;
 
         case SCR_LPS22HH:
-            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_mr);
+            u8g2_SetDrawColor(&g_u8g2, 0);
 
-            lib_u8g2_DrawCenteredStr(&g_u8g2, 8, "*** LPS22HH ***");
+            lib_u8g2_DrawCenteredStr(&g_u8g2, 11, STR_SPACE "LPS22HH" STR_SPACE);
 
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_14b_tf);
+            u8g2_SetDrawColor(&g_u8g2, 1);
 
-            lib_u8g2_DrawCenteredStr(&g_u8g2, 28, "Pressure");
-            
-            snprintf(g_line_buffer, MAX_LINE_LEN, "%.1f hPa", g_lps_pressure_hpa);
-            lib_u8g2_DrawCenteredStr(&g_u8g2, 44, g_line_buffer);
+            if (gp_lps22hh_ctx)
+            {
+                lib_u8g2_DrawCenteredStr(&g_u8g2, 28, STR_PRESSURE);
 
-        break;
-
-        case SCR_ABOUT:
-            u8g2_DrawXBM(&g_u8g2, 0, 0, LOGO_WIDTH, LOGO_HEIGHT, LOGO_BITS);
+                snprintf(g_line_buffer, MAX_LINE_LEN, "%.1f hPa", 
+                    g_lps_pressure_hpa);
+                lib_u8g2_DrawCenteredStr(&g_u8g2, 44, g_line_buffer);
+            }
+            else
+            {
+                lib_u8g2_DrawCenteredStr(&g_u8g2, 32, STR_SENSOR);
+                lib_u8g2_DrawCenteredStr(&g_u8g2, 50, STR_NOT_DETECTED);
+            }
         break;
 
         default:
