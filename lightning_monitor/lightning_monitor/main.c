@@ -453,8 +453,7 @@ display_screen(screen_id_t scr_id)
         case SCR_MAIN:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, "  * Storm Detector *");
-            u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
+            lib_u8g2_DrawCenteredStr(&g_u8g2, 8, "* Storm Detector *");
 
             // Show warning level bar graph
             warning_level_cropped = (dd->warning_level < WARNING_LEVEL_MIN) ?
@@ -515,10 +514,9 @@ display_screen(screen_id_t scr_id)
         case SCR_MAIN_2:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, "  * Storm Detector *");
-            u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
+            lib_u8g2_DrawCenteredStr(&g_u8g2, 8, "* Storm Detector *");
 
-            u8g2_SetFont(&g_u8g2, u8g2_font_t0_14b_tr);
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_14b_tf);
 
             u8g2_DrawXBM(&g_u8g2, 0, 12, lightning_width, lightning_height, lightning_bits);
             snprintf(g_line_buffer, MAX_LINE_LEN, "%d", dd->warning_level);
@@ -532,23 +530,26 @@ display_screen(screen_id_t scr_id)
                 g_mlx90614_data.temperature_ambient;
 
             u8g2_DrawXBM(&g_u8g2, 0, 52, cloud_width, cloud_height, cloud_bits);
-            snprintf(g_line_buffer, MAX_LINE_LEN, "# %.1f C", cloud_temp_delta);
+            snprintf(g_line_buffer, MAX_LINE_LEN, "\xBB %.1f \xB0""C", cloud_temp_delta);
             u8g2_DrawStr(&g_u8g2, X_BAR_START, 63, g_line_buffer);
         break;
 
         case SCR_TA7642:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, "   *** TA7642 ***");
-            u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
+            lib_u8g2_DrawCenteredStr(&g_u8g2, 8, "*** TA7642 ***");
 
             if (dd->warning_level == 0)
             {
-                snprintf(g_line_buffer, MAX_LINE_LEN, "Calibrating PWM: %d", dd->pwm_duty_ctrl);
-                u8g2_DrawStr(&g_u8g2, 0, 20, g_line_buffer);
+                u8g2_SetFont(&g_u8g2, u8g2_font_t0_14b_tf);
+
+                lib_u8g2_DrawCenteredStr(&g_u8g2, 28, "CALIBRATING");
+
+                snprintf(g_line_buffer, MAX_LINE_LEN, "PWM: %d", dd->pwm_duty_ctrl);
+                u8g2_DrawStr(&g_u8g2, 0, 46, g_line_buffer);
 
                 snprintf(g_line_buffer, MAX_LINE_LEN, "OUT: %.3f V", convert_ta7642_out_to_volts(dd->ta7642_output));
-                u8g2_DrawStr(&g_u8g2, 0, 31, g_line_buffer);
+                u8g2_DrawStr(&g_u8g2, 0, 60, g_line_buffer);
             }
             else
             {
@@ -570,27 +571,31 @@ display_screen(screen_id_t scr_id)
         case SCR_MLX90614:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, " *** MLX90614 ***");
-            u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
+            lib_u8g2_DrawCenteredStr(&g_u8g2, 8, "*** MLX90614 ***");
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, "T-rem: %.1f degC",
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_14b_tf);
+
+            snprintf(g_line_buffer, MAX_LINE_LEN, "Remote: %.1f \xb0""C",
                 g_mlx90614_data.temperature_remote);
-            u8g2_DrawStr(&g_u8g2, 0, 22, g_line_buffer);
+            u8g2_DrawStr(&g_u8g2, 0, 28, g_line_buffer);
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, "T-amb: %.1f degC",
+            snprintf(g_line_buffer, MAX_LINE_LEN, "Sensor: %.1f \xb0""C",
                 g_mlx90614_data.temperature_ambient);
-            u8g2_DrawStr(&g_u8g2, 0, 34, g_line_buffer);
+            u8g2_DrawStr(&g_u8g2, 0, 44, g_line_buffer);
 
         break;
 
         case SCR_LPS22HH:
             u8g2_SetFont(&g_u8g2, u8g2_font_t0_11b_tr);
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, " *** LPS22HH ***");
-            u8g2_DrawStr(&g_u8g2, 0, 8, g_line_buffer);
+            lib_u8g2_DrawCenteredStr(&g_u8g2, 8, "*** LPS22HH ***");
 
-            snprintf(g_line_buffer, MAX_LINE_LEN, "Pressure: %.1f hPa", g_lps_pressure_hpa);
-            u8g2_DrawStr(&g_u8g2, 0, 22, g_line_buffer);
+            u8g2_SetFont(&g_u8g2, u8g2_font_t0_14b_tf);
+
+            lib_u8g2_DrawCenteredStr(&g_u8g2, 28, "Pressure");
+            
+            snprintf(g_line_buffer, MAX_LINE_LEN, "%.1f hPa", g_lps_pressure_hpa);
+            lib_u8g2_DrawCenteredStr(&g_u8g2, 44, g_line_buffer);
 
         break;
 

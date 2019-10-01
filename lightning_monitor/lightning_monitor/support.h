@@ -42,10 +42,6 @@ extern "C" {
 *   Macros and #define Constants
 *******************************************************************************/
 
-// Uncomment directive below to allow debug messages output
-#define APP_DEBUG
-
-
 #ifdef APP_DEBUG
 #define DEBUG(s, f, ...) log_printf("%s %s: " s "\n", "App", f, ## __VA_ARGS__)
 #define DEBUG_DEV(s, f, d, ...) log_printf("%s %s (0x%02X): " s "\n", "MLX", f,\
