@@ -24,7 +24,10 @@
 #include <sys/socket.h>
 #include <applibs/application.h>
 
+#ifdef IOT_HUB_APPLICATION
 #include "azure_iot_utilities.h"
+#endif
+
 #include "init.h"
 #include "support.h"
 #include "main.h"
@@ -244,8 +247,8 @@ main(int argc, char *argv[])
             // - a failure to setup the client is a fatal error.
             if (!AzureIoT_SetupClient()) 
             {
-                Log_Debug("ERROR: Failed to set up IoT Hub client\n");
-                break;
+                ERROR("ERROR: Failed to set up IoT Hub client.\n", __FUNCTION__);
+                gb_is_termination_requested = true;
             }
 
             // AzureIoT_DoPeriodicTasks() needs to be called frequently in order to keep active
@@ -253,7 +256,7 @@ main(int argc, char *argv[])
             AzureIoT_DoPeriodicTasks();
 #           endif
         }
-        DEBUG("Exiting main loop.\n", __FUNCTION__);
+        // Application termination was requested
 
         u8g2_ClearDisplay(&g_u8g2);
 
@@ -263,7 +266,6 @@ main(int argc, char *argv[])
     }
 
     // Clean up and shutdown
-    DEBUG("Shutting down.\n\n", __FUNCTION__);
     init_shutdown();
 }
 /*******************************************************************************
@@ -281,28 +283,28 @@ handle_button1_press(void)
 {
     switch (g_screen_id)
     {
-        case SCR_MAIN:
-            g_screen_id = SCR_MAIN_2;
+    case SCR_MAIN:
+        g_screen_id = SCR_MAIN_2;
         break;
 
-        case SCR_MAIN_2:
-            g_screen_id = SCR_TA7642;
+    case SCR_MAIN_2:
+        g_screen_id = SCR_TA7642;
         break;
 
-        case SCR_TA7642:
-            g_screen_id = SCR_MLX90614;
+    case SCR_TA7642:
+        g_screen_id = SCR_MLX90614;
         break;
 
-        case SCR_MLX90614:
-            g_screen_id = SCR_LPS22HH;
+    case SCR_MLX90614:
+        g_screen_id = SCR_LPS22HH;
         break;
 
-        case SCR_LPS22HH:
-            g_screen_id = SCR_MAIN;
+    case SCR_LPS22HH:
+        g_screen_id = SCR_MAIN;
         break;
 
-        default:
-            g_screen_id = SCR_MAIN;
+    default:
+        g_screen_id = SCR_MAIN;
         break;
     }
 
@@ -312,8 +314,7 @@ handle_button1_press(void)
 void
 handle_button2_press(void)
 {
-    DEBUG("Button2 pressed.\n", __FUNCTION__);
-    gb_is_termination_requested = true;
+    return;
 }
 
 void
@@ -388,9 +389,7 @@ handle_azure_upload(void)
             g_mlx90614_data.temperature_ambient);
 
         DEBUG("Uploading to Azure: %s", __FUNCTION__, p_buffer_json);
-        
-        //AzureIoT_SendMessage(pjsonBuffer);
-
+        AzureIoT_SendMessage(pjsonBuffer);
         free(p_buffer_json);
     }
 #   endif
@@ -408,7 +407,7 @@ rtcore_send(const uint8_t *p_buffer, size_t byte_count)
     int bytes_sent = send(g_fd_socket, p_buffer, byte_count, 0);
     if (bytes_sent == -1)
     {
-        DEBUG("ERROR: Unable to send message: %s (%d)\n",
+        ERROR("ERROR: Unable to send message: %s (%d)\n",
             __FUNCTION__, strerror(errno), errno);
         gb_is_termination_requested = true;
     }
@@ -422,7 +421,7 @@ rtcore_receive(uint8_t *p_buffer, size_t byte_count)
     int bytes_received = recv(g_fd_socket, p_buffer, byte_count, 0);
     if (bytes_received == -1)
     {
-        DEBUG("ERROR: Unable to receive message: %s (%d)\n",
+        ERROR("ERROR: Unable to receive message: %s (%d)\n",
             __FUNCTION__, strerror(errno), errno);
         gb_is_termination_requested = true;
     }

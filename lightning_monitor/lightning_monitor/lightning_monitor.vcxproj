@@ -29,7 +29,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'" Label="Configuration">
     <UseDebugLibraries>false</UseDebugLibraries>
-    <TargetSysroot>2</TargetSysroot>
+    <TargetSysroot>3+Beta1909</TargetSysroot>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings" />
@@ -40,6 +40,10 @@
     <TargetHardwareDirectory>../../hardware/avnet_mt3620_sk</TargetHardwareDirectory>
     <TargetHardwareDefinition>project_hardware.json</TargetHardwareDefinition>
     <PartnerComponents>ac067706-9bda-425a-a766-a91a2c4e32c0</PartnerComponents>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'">
+    <TargetHardwareDirectory>../../hardware/avnet_mt3620_sk</TargetHardwareDirectory>
+    <TargetHardwareDefinition>project_hardware.json</TargetHardwareDefinition>
   </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="azure_iot_utilities.c" />

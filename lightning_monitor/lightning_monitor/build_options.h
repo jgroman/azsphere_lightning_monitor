@@ -6,7 +6,7 @@ extern "C" {
 #endif
 
 // Uncomment directive below to allow debug messages output
-#define APP_DEBUG
+//#define APP_DEBUG
 
 // If your application is going to connect straight to a IoT Hub, then enable this define.
 //#define IOT_HUB_APPLICATION
