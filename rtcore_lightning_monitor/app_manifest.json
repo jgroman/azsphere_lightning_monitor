@@ -13,7 +13,7 @@
     "Gpio": [ 0, 1, 4 ],
     "Uart": [],
     // There is a single ADC0 8-pin block with multiple logical channels: 0,1,2
-    "Adc": [ "ADC0" ],
+    "Adc": [ "ADC-CONTROLLER-0" ],
     "WifiConfig": false
   },
   "ApplicationType": "RealTimeCapable"

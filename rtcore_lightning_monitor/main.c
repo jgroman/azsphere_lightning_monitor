@@ -37,7 +37,7 @@
 *   External variables
 *******************************************************************************/
 
-extern uint32_t StackTop;   // &StackTop == end of TCM0
+extern uint32_t StackTop;   // &StackTop == end of TCM
 
 /*******************************************************************************
 *   Macros and #define Constants
