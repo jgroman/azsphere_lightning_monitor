@@ -1,4 +1,3 @@
-
 /***************************************************************************//**
 * @file    main.c
 * @version 1.0.0
@@ -70,10 +69,7 @@ extern uint32_t StackTop;   // &StackTop == end of TCM
 // value means less sensitivity, but better interference immunity.
 #define TA7642_NOISE_THRSHLD    70
 
-// Detection level thresholds
-#define TA7642_LEVEL_THRSHLD_0  2000
-#define TA7642_LEVEL_THRSHLD_1  4000
-#define TA7642_LEVEL_THRSHLD_2  6000
+// Maximum possible detection level value
 #define TA7642_LEVEL_THRSHLD_MAX  7000
 
 // Maximum allowed counter value for PWM duty timer
@@ -111,7 +107,6 @@ extern uint32_t StackTop;   // &StackTop == end of TCM
 #define MAX_APP_BUFFER_SIZE 256
 
 // Intercore message indentifiers. This is the first byte of incoming message.
-#define RTCORE_MSG_PING             'P'
 #define RTCORE_MSG_DATA_REQUEST     'D'
 
 typedef struct
@@ -186,7 +181,14 @@ handle_irq_pwm_timer(void);
 static void
 calibrate_pwm(void);
 
-/** 
+/**
+ * @brief Process incoming intercore A7 message.
+ */
+static void
+process_a7_message(void);
+
+#ifdef DEBUG_MSG_ENABLED
+/**
  * @brief Print bytes from buffer.
  */
 static void
@@ -199,16 +201,11 @@ static void
 print_guid(const uint8_t *guid);
 
 /**
- * @brief Process incoming intercore A7 message.
- */
-static void
-process_a7_message(void);
-
-/**
  * @brief Print formatted intercore A7 message.
  */
 static void
 debug_a7_message(uint8_t *buffer, uint32_t data_length);
+#endif
 
 /*******************************************************************************
 * Global variables
@@ -613,32 +610,6 @@ handle_irq_pwm_timer(void)
 }
 
 static void
-print_bytes(const uint8_t *buf, int start, int end)
-{
-    int step = (end >= start) ? +1 : -1;
-
-    for (/* nop */; start != end; start += step)
-    {
-        Uart_WriteHexBytePoll(buf[start]);
-    }
-    Uart_WriteHexBytePoll(buf[end]);
-}
-
-static void
-print_guid(const uint8_t *guid)
-{
-    print_bytes(guid, 3, 0); // 4-byte little-endian word
-    Uart_WriteStringPoll("-");
-    print_bytes(guid, 5, 4); // 2-byte little-endian half
-    Uart_WriteStringPoll("-");
-    print_bytes(guid, 7, 6); // 2-byte little-endian half
-    Uart_WriteStringPoll("-");
-    print_bytes(guid, 8, 9); // 2 bytes
-    Uart_WriteStringPoll("-");
-    print_bytes(guid, 10, 15); // 6 bytes
-}
-
-static void
 process_a7_message(void)
 {
     // Read incoming data from A7 Core
@@ -679,6 +650,33 @@ process_a7_message(void)
     }
 
     return;
+}
+
+#ifdef DEBUG_MSG_ENABLED
+static void
+print_bytes(const uint8_t *buf, int start, int end)
+{
+    int step = (end >= start) ? +1 : -1;
+
+    for (/* nop */; start != end; start += step)
+    {
+        Uart_WriteHexBytePoll(buf[start]);
+    }
+    Uart_WriteHexBytePoll(buf[end]);
+}
+
+static void
+print_guid(const uint8_t *guid)
+{
+    print_bytes(guid, 3, 0); // 4-byte little-endian word
+    Uart_WriteStringPoll("-");
+    print_bytes(guid, 5, 4); // 2-byte little-endian half
+    Uart_WriteStringPoll("-");
+    print_bytes(guid, 7, 6); // 2-byte little-endian half
+    Uart_WriteStringPoll("-");
+    print_bytes(guid, 8, 9); // 2 bytes
+    Uart_WriteStringPoll("-");
+    print_bytes(guid, 10, 15); // 6 bytes
 }
 
 static void
@@ -728,5 +726,6 @@ debug_a7_message(uint8_t *buffer, uint32_t data_length)
     }
     Uart_WriteStringPoll(STRING_CRLF);
 }
+#endif
 
 /* [] END OF FILE */
