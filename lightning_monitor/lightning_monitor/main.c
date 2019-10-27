@@ -389,7 +389,7 @@ handle_azure_upload(void)
             g_mlx90614_data.temperature_ambient);
 
         DEBUG("Uploading to Azure: %s", __FUNCTION__, p_buffer_json);
-        AzureIoT_SendMessage(pjsonBuffer);
+        AzureIoT_SendMessage(p_buffer_json);
         free(p_buffer_json);
     }
 #   endif
